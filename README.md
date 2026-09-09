@@ -71,3 +71,30 @@ cd /root/zhihua-service
 ```
 
 API 密钥、GitHub 凭据、SSH 私钥、实例密码、用户素材和生成结果不得提交到仓库或写入发布镜像。
+
+
+## Secure job protocol (v0.2)
+
+Health, version, capabilities, environment status, and ComfyUI readiness stay read-only.
+The handshake and every job endpoint require a deployment-specific bearer token. Job calls
+also require `X-Zhihua-API-Version: v1` and `X-Zhihua-Client-Version`. The token must be
+generated during deployment, stored by the desktop client in the operating-system credential
+store, and supplied to the remote process through its environment. It must never be committed.
+
+The server accepts workflow identifiers from the configured allowlist only. It does not accept
+arbitrary ComfyUI workflow JSON. `client_request_id` is an idempotency key, so reconnecting
+clients can recover the original job without silently submitting a duplicate.
+
+Authenticated endpoints:
+
+- `POST /api/v1/handshake`
+- `POST /api/v1/jobs`
+- `GET /api/v1/jobs`
+- `GET /api/v1/jobs/queue`
+- `GET /api/v1/jobs/{job_id}`
+- `POST /api/v1/jobs/{job_id}/cancel`
+- `GET /api/v1/jobs/{job_id}/result`
+
+Jobs are persisted in SQLite. A completed job returns result manifest schema v1 with artifact
+sizes and SHA-256 digests; the future worker/download layer will populate and serve artifacts.
+The cloud-provider API private key is not used or stored by this service.

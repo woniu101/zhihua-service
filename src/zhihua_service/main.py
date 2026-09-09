@@ -8,6 +8,7 @@ from zhihua_service import __version__
 from zhihua_service.api.router import api_router
 from zhihua_service.config import get_settings
 from zhihua_service.services.comfyui import ComfyUIClient
+from zhihua_service.services.jobs import JobStore
 
 settings = get_settings()
 
@@ -15,7 +16,9 @@ settings = get_settings()
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     http_client = httpx.AsyncClient(timeout=settings.comfyui_timeout_seconds)
+    app.state.settings = settings
     app.state.comfyui = ComfyUIClient(http_client, settings.comfyui_base_url)
+    app.state.jobs = JobStore(settings.jobs_database_path)
     try:
         yield
     finally:
@@ -37,4 +40,3 @@ async def root() -> dict[str, str]:
         "version": __version__,
         "docs": "/docs",
     }
-
