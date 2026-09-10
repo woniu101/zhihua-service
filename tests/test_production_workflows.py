@@ -36,6 +36,17 @@ def test_all_accepted_workflows_are_installed_and_buildable() -> None:
         assert "t2i-1" not in encoded
 
 
+def test_h3_audio_can_be_removed_from_the_candidate_container() -> None:
+    registry = WorkflowRegistry(str(WORKFLOW_DIR))
+    parameters = _parameters("h3-t2v-turbo-v1")
+    parameters["discardH3Audio"] = True
+    prompt = registry.build_prompt("h3-t2v-turbo-v1", parameters)
+    create_video = next(
+        node for node in prompt.values() if node.get("class_type") == "CreateVideo"
+    )
+    assert "audio" not in create_video["inputs"]
+
+
 @pytest.mark.parametrize(
     ("workflow_id", "missing"),
     [

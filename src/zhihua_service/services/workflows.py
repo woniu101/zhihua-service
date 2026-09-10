@@ -39,6 +39,12 @@ class WorkflowRegistry:
                 continue
             for binding_path in paths:
                 self._set_path(rendered, binding_path, parameters[parameter_name])
+        if parameters.get("discardH3Audio") is True:
+            for node in rendered.values():
+                if isinstance(node, dict) and node.get("class_type") == "CreateVideo":
+                    inputs = node.get("inputs")
+                    if isinstance(inputs, dict):
+                        inputs.pop("audio", None)
         return rendered
 
     def _load_template(
