@@ -6,6 +6,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 from zhihua_service.schemas import (
     JobCreateRequest,
@@ -63,6 +64,7 @@ class JobStore:
                         progress REAL NOT NULL DEFAULT 0,
                         error_code TEXT,
                         error_message TEXT,
+                        status_detail TEXT,
                         result_manifest_json TEXT,
                         created_at TEXT NOT NULL,
                         updated_at TEXT NOT NULL
@@ -71,6 +73,12 @@ class JobStore:
                     ON jobs(status, updated_at DESC);
                     """
                 )
+                columns = {
+                    str(row["name"])
+                    for row in connection.execute("PRAGMA table_info(jobs)").fetchall()
+                }
+                if "status_detail" not in columns:
+                    connection.execute("ALTER TABLE jobs ADD COLUMN status_detail TEXT")
             self._initialized = True
 
     def create(self, request: JobCreateRequest) -> tuple[JobResponse, bool]:
@@ -168,6 +176,112 @@ class JobStore:
             ).fetchall()
         return [self._to_response(row) for row in rows], total
 
+    def claim_next(self) -> tuple[JobResponse, dict[str, Any]] | None:
+        self._ensure_schema()
+        with self._lock, self._connection() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                """
+                SELECT * FROM jobs
+                WHERE status = ?
+                ORDER BY created_at ASC
+                LIMIT 1
+                """,
+                (JobStatus.QUEUED.value,),
+            ).fetchone()
+            if row is None:
+                return None
+            now = datetime.now(timezone.utc).isoformat()
+            changed = connection.execute(
+                """
+                UPDATE jobs
+                SET status = ?, progress = ?, status_detail = NULL,
+                    error_code = NULL, error_message = NULL, updated_at = ?
+                WHERE id = ? AND status = ?
+                """,
+                (
+                    JobStatus.PREPARING.value,
+                    0.02,
+                    now,
+                    row["id"],
+                    JobStatus.QUEUED.value,
+                ),
+            ).rowcount
+            if changed != 1:
+                return None
+            claimed = connection.execute(
+                "SELECT * FROM jobs WHERE id = ?",
+                (row["id"],),
+            ).fetchone()
+            assert claimed is not None
+            parameters = json.loads(claimed["parameters_json"])
+            return self._to_response(claimed), parameters
+
+    def mark_running(self, job_id: str, prompt_id: str) -> JobResponse:
+        return self._update(
+            job_id,
+            status=JobStatus.RUNNING,
+            progress=0.1,
+            prompt_id=prompt_id,
+            status_detail="ComfyUI accepted the prompt",
+            clear_error=True,
+        )
+
+    def update_progress(self, job_id: str, progress: float) -> JobResponse:
+        return self._update(
+            job_id,
+            progress=max(0.0, min(progress, 0.99)),
+            status_detail="ComfyUI is executing the prompt",
+        )
+
+    def annotate(self, job_id: str, code: str, detail: str) -> JobResponse:
+        return self._update(
+            job_id,
+            status_detail=detail,
+            error_code=code,
+            error_message=detail,
+        )
+
+    def defer(self, job_id: str, code: str, detail: str) -> JobResponse:
+        return self._update(
+            job_id,
+            status=JobStatus.QUEUED,
+            progress=0.0,
+            prompt_id=None,
+            status_detail=detail,
+            error_code=code,
+            error_message=detail,
+        )
+
+    def fail(self, job_id: str, code: str, detail: str) -> JobResponse:
+        return self._update(
+            job_id,
+            status=JobStatus.FAILED,
+            status_detail=detail,
+            error_code=code,
+            error_message=detail,
+        )
+
+    def recover_incomplete(self) -> int:
+        self._ensure_schema()
+        now = datetime.now(timezone.utc).isoformat()
+        with self._lock, self._connection() as connection:
+            changed = connection.execute(
+                """
+                UPDATE jobs
+                SET status = ?, progress = 0,
+                    status_detail = ?, updated_at = ?
+                WHERE status = ? AND prompt_id IS NULL
+                """,
+                (
+                    JobStatus.QUEUED.value,
+                    "Recovered after service restart",
+                    now,
+                    JobStatus.PREPARING.value,
+                ),
+            ).rowcount
+        return int(changed)
+
     def queue_status(self) -> QueueStatusResponse:
         self._ensure_schema()
         with self._lock, self._connection() as connection:
@@ -204,17 +318,11 @@ class JobStore:
             JobStatus.CANCELLED,
         }:
             raise JobConflictError(f"job cannot be cancelled from {current.status.value}")
-        now = datetime.now(timezone.utc).isoformat()
-        with self._lock, self._connection() as connection:
-            connection.execute(
-                """
-                UPDATE jobs
-                SET status = ?, updated_at = ?
-                WHERE id = ?
-                """,
-                (JobStatus.CANCELLED.value, now, job_id),
-            )
-        return self.get(job_id)
+        return self._update(
+            job_id,
+            status=JobStatus.CANCELLED,
+            status_detail="Cancelled by client",
+        )
 
     def complete(self, job_id: str, manifest: ResultManifest) -> JobResponse:
         current = self.get(job_id)
@@ -226,16 +334,59 @@ class JobStore:
                 """
                 UPDATE jobs
                 SET status = ?, progress = 1, prompt_id = ?,
+                    status_detail = ?, error_code = NULL, error_message = NULL,
                     result_manifest_json = ?, updated_at = ?
                 WHERE id = ?
                 """,
                 (
                     JobStatus.COMPLETED.value,
                     manifest.prompt_id,
+                    "ComfyUI execution completed",
                     manifest.model_dump_json(),
                     now,
                     job_id,
                 ),
+            )
+        return self.get(job_id)
+
+    def _update(
+        self,
+        job_id: str,
+        *,
+        status: JobStatus | None = None,
+        progress: float | None = None,
+        prompt_id: str | None | object = ...,
+        status_detail: str | None | object = ...,
+        error_code: str | None | object = ...,
+        error_message: str | None | object = ...,
+        clear_error: bool = False,
+    ) -> JobResponse:
+        self.get(job_id)
+        assignments = ["updated_at = ?"]
+        values: list[object] = [datetime.now(timezone.utc).isoformat()]
+        for column, value in (
+            ("status", status.value if status else None),
+            ("progress", progress),
+        ):
+            if value is not None:
+                assignments.append(f"{column} = ?")
+                values.append(value)
+        for column, value in (
+            ("prompt_id", prompt_id),
+            ("status_detail", status_detail),
+            ("error_code", error_code),
+            ("error_message", error_message),
+        ):
+            if value is not ...:
+                assignments.append(f"{column} = ?")
+                values.append(value)
+        if clear_error:
+            assignments.extend(["error_code = NULL", "error_message = NULL"])
+        values.append(job_id)
+        with self._lock, self._connection() as connection:
+            connection.execute(
+                f"UPDATE jobs SET {', '.join(assignments)} WHERE id = ?",
+                values,
             )
         return self.get(job_id)
 
@@ -258,6 +409,7 @@ class JobStore:
             progress=row["progress"],
             error_code=row["error_code"],
             error_message=row["error_message"],
+            status_detail=row["status_detail"],
             created_at=row["created_at"],
             updated_at=row["updated_at"],
             result_manifest=manifest,

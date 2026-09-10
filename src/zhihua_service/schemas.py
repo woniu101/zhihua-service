@@ -30,6 +30,7 @@ class CapabilitiesResponse(StrictModel):
     authentication_configured: bool
     features: list[str]
     workflows: list[str]
+    available_workflows: list[str]
     job_kinds: list[str]
     job_statuses: list[str]
     result_manifest_version: Literal["1"] = "1"
@@ -152,6 +153,7 @@ class JobResponse(StrictModel):
     progress: float = Field(ge=0, le=1)
     error_code: str | None = None
     error_message: str | None = None
+    status_detail: str | None = None
     created_at: datetime
     updated_at: datetime
     result_manifest: ResultManifest | None = None

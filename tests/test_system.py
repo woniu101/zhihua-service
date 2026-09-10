@@ -61,9 +61,13 @@ def test_capabilities_describe_secure_job_contract() -> None:
         "environment_status",
         "comfyui_readiness",
         "persistent_job_queue",
+        "comfyui_job_executor",
         "job_status",
         "job_cancellation",
         "result_manifest_v1",
     ]
+    assert payload["available_workflows"] == []
+    assert "h3-t2v-turbo-v1" in payload["workflows"]
+    assert "h3-ref2va-high-v1" in payload["workflows"]
     assert "video_reference_remake" in payload["job_kinds"]
     assert "interrupted" in payload["job_statuses"]

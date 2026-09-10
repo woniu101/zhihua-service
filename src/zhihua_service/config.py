@@ -3,9 +3,16 @@ from dataclasses import dataclass
 from functools import lru_cache
 
 DEFAULT_WORKFLOWS = (
-    "h3-fl2v-turbo-v1",
+    "h3-t2v-turbo-v1",
+    "h3-t2v-high-v1",
+    "h3-i2v-turbo-v1",
+    "h3-i2v-high-v1",
+    "h3-flf2v-turbo-v1",
+    "h3-flf2v-high-v1",
     "h3-ref2va-turbo-v1",
+    "h3-ref2va-high-v1",
     "seedvr2-1080p-v1",
+    "h3-fl2v-turbo-v1",
 )
 
 
@@ -18,6 +25,10 @@ class Settings:
     comfyui_base_url: str
     comfyui_timeout_seconds: float
     comfyui_path: str
+    comfyui_output_path: str
+    workflow_directory: str
+    worker_poll_interval_seconds: float
+    worker_retry_delay_seconds: float
     service_token: str
     jobs_database_path: str
     minimum_client_version: str
@@ -40,6 +51,7 @@ def get_settings() -> Settings:
         ).split(",")
         if item.strip()
     )
+    comfyui_path = os.getenv("ZHIHUA_COMFYUI_PATH", "/root/ComfyUI")
     return Settings(
         environment=os.getenv("ZHIHUA_ENVIRONMENT", "production"),
         host=os.getenv("ZHIHUA_HOST", "127.0.0.1"),
@@ -52,7 +64,23 @@ def get_settings() -> Settings:
         comfyui_timeout_seconds=float(
             os.getenv("ZHIHUA_COMFYUI_TIMEOUT_SECONDS", "5")
         ),
-        comfyui_path=os.getenv("ZHIHUA_COMFYUI_PATH", "/root/ComfyUI"),
+        comfyui_path=comfyui_path,
+        comfyui_output_path=os.getenv(
+            "ZHIHUA_COMFYUI_OUTPUT_PATH",
+            f"{comfyui_path}/output",
+        ),
+        workflow_directory=os.getenv(
+            "ZHIHUA_WORKFLOW_DIRECTORY",
+            "/root/zhihua-service/workflows",
+        ),
+        worker_poll_interval_seconds=max(
+            0.1,
+            float(os.getenv("ZHIHUA_WORKER_POLL_INTERVAL_SECONDS", "2")),
+        ),
+        worker_retry_delay_seconds=max(
+            1.0,
+            float(os.getenv("ZHIHUA_WORKER_RETRY_DELAY_SECONDS", "30")),
+        ),
         service_token=os.getenv("ZHIHUA_SERVICE_TOKEN", ""),
         jobs_database_path=os.getenv(
             "ZHIHUA_JOBS_DATABASE_PATH",

@@ -1,3 +1,4 @@
+import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -8,7 +9,9 @@ from zhihua_service import __version__
 from zhihua_service.api.router import api_router
 from zhihua_service.config import get_settings
 from zhihua_service.services.comfyui import ComfyUIClient
+from zhihua_service.services.executor import JobProcessor, run_job_worker, stop_job_worker
 from zhihua_service.services.jobs import JobStore
+from zhihua_service.services.workflows import WorkflowRegistry
 
 settings = get_settings()
 
@@ -16,12 +19,30 @@ settings = get_settings()
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     http_client = httpx.AsyncClient(timeout=settings.comfyui_timeout_seconds)
+    comfyui = ComfyUIClient(http_client, settings.comfyui_base_url)
+    jobs = JobStore(settings.jobs_database_path)
+    jobs.recover_incomplete()
+    workflows = WorkflowRegistry(settings.workflow_directory)
+    processor = JobProcessor(
+        jobs,
+        comfyui,
+        workflows,
+        output_directory=settings.comfyui_output_path,
+        retry_delay_seconds=settings.worker_retry_delay_seconds,
+    )
+    worker = asyncio.create_task(
+        run_job_worker(processor, settings.worker_poll_interval_seconds),
+        name="zhihua-job-worker",
+    )
     app.state.settings = settings
-    app.state.comfyui = ComfyUIClient(http_client, settings.comfyui_base_url)
-    app.state.jobs = JobStore(settings.jobs_database_path)
+    app.state.comfyui = comfyui
+    app.state.jobs = jobs
+    app.state.workflows = workflows
+    app.state.job_processor = processor
     try:
         yield
     finally:
+        await stop_job_worker(worker)
         await http_client.aclose()
 
 

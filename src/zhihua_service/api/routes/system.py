@@ -13,6 +13,7 @@ from zhihua_service.schemas import (
 )
 from zhihua_service.services.comfyui import ComfyUIClient
 from zhihua_service.services.environment import get_environment_status
+from zhihua_service.services.workflows import WorkflowRegistry
 
 router = APIRouter(tags=["system"])
 
@@ -22,6 +23,7 @@ FEATURES = [
     "environment_status",
     "comfyui_readiness",
     "persistent_job_queue",
+    "comfyui_job_executor",
     "job_status",
     "job_cancellation",
     "result_manifest_v1",
@@ -47,10 +49,12 @@ async def version(request: Request) -> VersionResponse:
 @router.get("/capabilities", response_model=CapabilitiesResponse)
 async def capabilities(request: Request) -> CapabilitiesResponse:
     settings: Settings = request.app.state.settings
+    workflows: WorkflowRegistry = request.app.state.workflows
     return CapabilitiesResponse(
         authentication_configured=settings.authentication_configured,
         features=FEATURES,
         workflows=list(settings.allowed_workflows),
+        available_workflows=workflows.available_workflows(settings.allowed_workflows),
         job_kinds=[kind.value for kind in JobKind],
         job_statuses=[job_status.value for job_status in JobStatus],
     )

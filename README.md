@@ -7,6 +7,8 @@
 - 服务健康、版本和能力查询
 - Python、Torch、CUDA 和 ComfyUI 目录状态检查
 - ComfyUI 连接与队列状态检查
+- 按受信任 workflow_id 加载 API-format 工作流并推进 SQLite 任务队列
+- 提交 /prompt、轮询 /history，记录进度、错误与结果清单
 - 在无卡环境中正常运行服务与离线测试
 - OpenAPI 文档与模拟测试
 
@@ -95,6 +97,33 @@ Authenticated endpoints:
 - `POST /api/v1/jobs/{job_id}/cancel`
 - `GET /api/v1/jobs/{job_id}/result`
 
-Jobs are persisted in SQLite. A completed job returns result manifest schema v1 with artifact
-sizes and SHA-256 digests; the future worker/download layer will populate and serve artifacts.
+Jobs are persisted in SQLite. The background worker loads trusted API-format prompt templates
+from ZHIHUA_WORKFLOW_DIRECTORY, submits them to ComfyUI, polls history, and stores progress,
+errors, and result manifest schema v1. If ComfyUI or a workflow template is unavailable, the
+job remains queued with an explanatory status instead of terminating the service. Artifact
+download serving is still pending.
 The cloud-provider API private key is not used or stored by this service.
+
+
+## Workflow templates
+
+Each allowed workflow uses a workflow-id JSON file in ZHIHUA_WORKFLOW_DIRECTORY. Export the
+workflow from ComfyUI in API format. A plain API prompt is accepted as-is. To inject validated
+job parameters, wrap it in an object with prompt and bindings fields. Each binding key names a
+job parameter and its value is a list of JSON paths into the prompt.
+
+The service chooses the file from its configured workflow allowlist; clients cannot submit
+arbitrary node graphs. Actual H3 and SeedVR workflow JSON remains deployment-specific and must be
+validated against the nodes and public-model mount in the release image.
+
+
+## MVP workflow identifiers
+
+The accepted H3 identifiers are t2v, i2v, flf2v, and ref2va, each with turbo-v1 and
+high-v1 variants. seedvr2-1080p-v1 covers final upscaling. h3-fl2v-turbo-v1 remains accepted only
+as a compatibility alias for h3-flf2v-turbo-v1.
+
+The capabilities response keeps workflows as the accepted identifier list and adds
+available_workflows for templates that are installed and structurally readable on this instance.
+A client should enable generation from available_workflows rather than assuming every accepted
+identifier is installed.

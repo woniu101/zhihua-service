@@ -41,6 +41,7 @@ async def handshake(request: Request, payload: HandshakeRequest) -> HandshakeRes
         capabilities=[
             "comfyui_readiness",
             "persistent_job_queue",
+            "comfyui_job_executor",
             "job_recovery",
             "result_manifest_v1",
         ],
