@@ -44,6 +44,14 @@ cp .env.example .env
   --reload
 ```
 
+官方 ComfyUI 镜像内置 Supervisor。安装随仓库提供的服务配置后，知画服务会在实例无卡/GPU 模式切换或进程异常退出后自动恢复：
+
+```bash
+sudo bash deploy/install-supervisor.sh /root/zhihua-service
+```
+
+该配置仍只监听 `127.0.0.1:8000`，由桌面端的 SSH 隧道访问，不直接暴露公网端口。
+
 服务只监听实例内的 `127.0.0.1:8000`。桌面端通过 SSH 隧道连接：
 
 ```bash
