@@ -28,6 +28,23 @@ class WorkflowRegistry:
         workflow_id: str,
         parameters: dict[str, Any],
     ) -> dict[str, Any]:
+        prompt, bindings, required_parameters = self._load_template(workflow_id)
+        missing = [name for name in required_parameters if name not in parameters]
+        if missing:
+            raise WorkflowTemplateError(f"workflow parameters are missing: {', '.join(missing)}")
+
+        rendered = copy.deepcopy(prompt)
+        for parameter_name, paths in bindings.items():
+            if parameter_name not in parameters:
+                continue
+            for binding_path in paths:
+                self._set_path(rendered, binding_path, parameters[parameter_name])
+        return rendered
+
+    def _load_template(
+        self,
+        workflow_id: str,
+    ) -> tuple[dict[str, Any], dict[str, list[list[Any]]], list[str]]:
         template_id = COMPATIBILITY_ALIASES.get(workflow_id, workflow_id)
         path = self._directory / f"{template_id}.json"
         try:
@@ -47,18 +64,22 @@ class WorkflowRegistry:
         if "prompt" in raw:
             prompt = raw.get("prompt")
             bindings = raw.get("bindings", {})
-            if set(raw) - {"prompt", "bindings", "description"}:
+            required_parameters = raw.get("requiredParameters", [])
+            if set(raw) - {"prompt", "bindings", "description", "requiredParameters"}:
                 raise WorkflowTemplateError("workflow template has unsupported fields")
         else:
             prompt = raw
             bindings = {}
+            required_parameters = []
 
         if not isinstance(prompt, dict) or not prompt:
             raise WorkflowTemplateError("workflow prompt must be a non-empty object")
         if not isinstance(bindings, dict):
             raise WorkflowTemplateError("workflow bindings must be an object")
-
-        rendered = copy.deepcopy(prompt)
+        if not isinstance(required_parameters, list) or not all(
+            isinstance(item, str) and item for item in required_parameters
+        ):
+            raise WorkflowTemplateError("requiredParameters must be a list of names")
         for parameter_name, paths in bindings.items():
             if (
                 not isinstance(paths, list)
@@ -68,17 +89,15 @@ class WorkflowRegistry:
                 raise WorkflowTemplateError(
                     f"binding {parameter_name!r} must contain one or more paths"
                 )
-            if parameter_name not in parameters:
-                continue
             for binding_path in paths:
-                self._set_path(rendered, binding_path, parameters[parameter_name])
-        return rendered
+                self._set_path(copy.deepcopy(prompt), binding_path, None)
+        return prompt, bindings, required_parameters
 
     def available_workflows(self, accepted_workflows: tuple[str, ...]) -> list[str]:
         available: list[str] = []
         for workflow_id in accepted_workflows:
             try:
-                self.build_prompt(workflow_id, {})
+                self._load_template(workflow_id)
             except WorkflowTemplateError:
                 continue
             available.append(workflow_id)
@@ -93,15 +112,11 @@ class WorkflowRegistry:
             try:
                 current = current[segment]
             except (KeyError, IndexError, TypeError) as exc:
-                raise WorkflowTemplateError(
-                    f"binding path does not exist: {path!r}"
-                ) from exc
+                raise WorkflowTemplateError(f"binding path does not exist: {path!r}") from exc
         final = path[-1]
         if not isinstance(final, (str, int)):
             raise WorkflowTemplateError("binding path segments must be strings or integers")
         try:
             current[final] = value
         except (KeyError, IndexError, TypeError) as exc:
-            raise WorkflowTemplateError(
-                f"binding path does not exist: {path!r}"
-            ) from exc
+            raise WorkflowTemplateError(f"binding path does not exist: {path!r}") from exc

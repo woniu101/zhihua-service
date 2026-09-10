@@ -44,6 +44,10 @@ class EnvironmentStatusResponse(StrictModel):
     cuda_device_count: int
     comfyui_path: str
     comfyui_path_exists: bool
+    required_models: int
+    available_models: int
+    public_model_links: int
+    missing_models: list[str]
 
 
 class ComfyUIStatusResponse(StrictModel):
@@ -174,3 +178,12 @@ class QueueStatusResponse(StrictModel):
 class JobCancelResponse(StrictModel):
     id: str
     status: JobStatus
+
+
+class InputUploadResponse(StrictModel):
+    input_id: str
+    remote_file: str
+    original_filename: str
+    media_type: str
+    size_bytes: int
+    sha256: str = Field(pattern=r"^[a-f0-9]{64}$")

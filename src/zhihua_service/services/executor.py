@@ -56,6 +56,10 @@ class JobProcessor:
             return
         job, parameters = claimed
         try:
+            parameters = {
+                **parameters,
+                "outputPrefix": f"video/zhihua/{job.project_id}/{job.scene_id}/{job.id}",
+            }
             prompt = self._workflows.build_prompt(job.workflow_id, parameters)
             prompt_id = await self._comfyui.submit_prompt(prompt, client_id=job.id)
         except (WorkflowTemplateMissingError, ComfyUIUnavailableError) as exc:
@@ -76,9 +80,7 @@ class JobProcessor:
             history = await self._comfyui.get_history(prompt_id)
         except ComfyUIUnavailableError as exc:
             self._jobs.annotate(job_id, exc.code, str(exc))
-            self._deferred_until = (
-                asyncio.get_running_loop().time() + self._retry_delay_seconds
-            )
+            self._deferred_until = asyncio.get_running_loop().time() + self._retry_delay_seconds
             return
         except ComfyUIError as exc:
             self._jobs.fail(job_id, exc.code, str(exc))
@@ -96,11 +98,15 @@ class JobProcessor:
             return
 
         job = self._jobs.get(job_id)
-        artifacts = [
+        resolved_artifacts = [
             artifact
             for index, output in enumerate(history.outputs)
             if (artifact := self._artifact(job_id, output, index)) is not None
         ]
+        artifacts = []
+        for artifact, relative_path in resolved_artifacts:
+            self._jobs.register_artifact(job_id, artifact.artifact_id, relative_path)
+            artifacts.append(artifact)
         manifest = ResultManifest(
             job_id=job.id,
             workflow_id=job.workflow_id,
@@ -115,7 +121,7 @@ class JobProcessor:
         job_id: str,
         output: ComfyUIOutput,
         index: int,
-    ) -> ArtifactManifest | None:
+    ) -> tuple[ArtifactManifest, str] | None:
         if output.storage_type != "output":
             return None
         root = self._output_directory.resolve()
@@ -141,7 +147,7 @@ class JobProcessor:
         else:
             kind = "metadata"
         artifact_id = f"{output.node_id}-{index}"
-        return ArtifactManifest(
+        manifest = ArtifactManifest(
             artifact_id=artifact_id,
             kind=kind,
             filename=candidate.name,
@@ -150,6 +156,7 @@ class JobProcessor:
             sha256=digest.hexdigest(),
             download_path=f"/api/v1/jobs/{job_id}/artifacts/{artifact_id}",
         )
+        return manifest, candidate.relative_to(root).as_posix()
 
 
 async def run_job_worker(processor: JobProcessor, poll_interval_seconds: float) -> None:

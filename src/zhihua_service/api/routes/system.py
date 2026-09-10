@@ -27,6 +27,8 @@ FEATURES = [
     "job_status",
     "job_cancellation",
     "result_manifest_v1",
+    "authenticated_input_upload",
+    "range_artifact_download",
 ]
 
 

@@ -132,9 +132,7 @@ def test_result_manifest_is_returned_only_after_completion(tmp_path) -> None:
                     media_type="video/mp4",
                     size_bytes=1234,
                     sha256="a" * 64,
-                    download_path=(
-                        f"/api/v1/jobs/{created['id']}/artifacts/artifact-1"
-                    ),
+                    download_path=(f"/api/v1/jobs/{created['id']}/artifacts/artifact-1"),
                 )
             ],
         )
@@ -147,3 +145,58 @@ def test_result_manifest_is_returned_only_after_completion(tmp_path) -> None:
         assert completed.status_code == 200
         assert completed.json()["prompt_id"] == "prompt-123"
         assert completed.json()["artifacts"][0]["sha256"] == "a" * 64
+
+
+def test_artifact_download_is_authenticated_scoped_and_supports_ranges(tmp_path) -> None:
+    output_root = tmp_path / "output"
+    output_file = output_root / "video" / "scene-1.mp4"
+    output_file.parent.mkdir(parents=True)
+    output_file.write_bytes(b"0123456789")
+    with TestClient(app) as client:
+        client.app.state.settings = replace(
+            settings,
+            service_token=TOKEN,
+            comfyui_output_path=str(output_root),
+        )
+        store = JobStore(str(tmp_path / "jobs.sqlite3"))
+        client.app.state.jobs = store
+        created = client.post(
+            "/api/v1/jobs",
+            headers=HEADERS,
+            json=_payload("request-download"),
+        ).json()
+        manifest = ResultManifest(
+            job_id=created["id"],
+            workflow_id=created["workflow_id"],
+            prompt_id="prompt-download",
+            created_at=datetime.now(timezone.utc),
+            artifacts=[
+                ArtifactManifest(
+                    artifact_id="video-0",
+                    kind="video",
+                    filename="scene-1.mp4",
+                    media_type="video/mp4",
+                    size_bytes=10,
+                    sha256="b" * 64,
+                    download_path=(f"/api/v1/jobs/{created['id']}/artifacts/video-0"),
+                )
+            ],
+        )
+        store.register_artifact(created["id"], "video-0", "video/scene-1.mp4")
+        store.complete(created["id"], manifest)
+
+        unauthenticated = client.get(f"/api/v1/jobs/{created['id']}/artifacts/video-0")
+        ranged = client.get(
+            f"/api/v1/jobs/{created['id']}/artifacts/video-0",
+            headers={**HEADERS, "Range": "bytes=2-5"},
+        )
+        missing = client.get(
+            f"/api/v1/jobs/{created['id']}/artifacts/other",
+            headers=HEADERS,
+        )
+
+    assert unauthenticated.status_code == 401
+    assert ranged.status_code == 206
+    assert ranged.content == b"2345"
+    assert ranged.headers["x-content-sha256"] == "b" * 64
+    assert missing.status_code == 404

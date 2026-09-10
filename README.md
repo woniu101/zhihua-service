@@ -9,6 +9,8 @@
 - ComfyUI 连接与队列状态检查
 - 按受信任 workflow_id 加载 API-format 工作流并推进 SQLite 任务队列
 - 提交 /prompt、轮询 /history，记录进度、错误与结果清单
+- 经鉴权上传参考图片/视频，并按结果清单下载成品（支持 Range 续传）
+- 内置 9 个由实测流程固化的 H3/SeedVR2 API 工作流模板
 - 在无卡环境中正常运行服务与离线测试
 - OpenAPI 文档与模拟测试
 
@@ -60,6 +62,8 @@ ssh -N -L 18000:127.0.0.1:8000 -p <port> root@<host>
 - `GET /api/v1/environment/status`
 - `GET /api/v1/comfyui/status`
 - `GET /api/v1/ready`
+- `POST /api/v1/inputs?filename=...`
+- `DELETE /api/v1/inputs/{input_id}`
 - `GET /docs`
 
 `/health` 只检查知画服务自身；`/ready` 还要求 ComfyUI 已就绪。无卡模式下服务健康但 ComfyUI 未就绪是预期状态。
@@ -75,7 +79,7 @@ cd /root/zhihua-service
 API 密钥、GitHub 凭据、SSH 私钥、实例密码、用户素材和生成结果不得提交到仓库或写入发布镜像。
 
 
-## Secure job protocol (v0.2)
+## Secure job protocol (v0.3)
 
 Health, version, capabilities, environment status, and ComfyUI readiness stay read-only.
 The handshake and every job endpoint require a deployment-specific bearer token. Job calls
@@ -96,12 +100,13 @@ Authenticated endpoints:
 - `GET /api/v1/jobs/{job_id}`
 - `POST /api/v1/jobs/{job_id}/cancel`
 - `GET /api/v1/jobs/{job_id}/result`
+- `GET /api/v1/jobs/{job_id}/artifacts/{artifact_id}`
 
 Jobs are persisted in SQLite. The background worker loads trusted API-format prompt templates
 from ZHIHUA_WORKFLOW_DIRECTORY, submits them to ComfyUI, polls history, and stores progress,
 errors, and result manifest schema v1. If ComfyUI or a workflow template is unavailable, the
 job remains queued with an explanatory status instead of terminating the service. Artifact
-download serving is still pending.
+paths are stored server-side and a client can only download files listed in that job's manifest.
 The cloud-provider API private key is not used or stored by this service.
 
 
@@ -113,8 +118,9 @@ job parameters, wrap it in an object with prompt and bindings fields. Each bindi
 job parameter and its value is a list of JSON paths into the prompt.
 
 The service chooses the file from its configured workflow allowlist; clients cannot submit
-arbitrary node graphs. Actual H3 and SeedVR workflow JSON remains deployment-specific and must be
-validated against the nodes and public-model mount in the release image.
+arbitrary node graphs. The repository templates come from the 2026-09-08 5090 validation run and
+reference the public-model mount filenames. A clean release image must still run the environment
+probe and one GPU smoke test before publication.
 
 
 ## MVP workflow identifiers

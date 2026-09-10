@@ -71,6 +71,13 @@ class JobStore:
                     );
                     CREATE INDEX IF NOT EXISTS idx_jobs_status_updated
                     ON jobs(status, updated_at DESC);
+                    CREATE TABLE IF NOT EXISTS artifact_files (
+                        job_id TEXT NOT NULL,
+                        artifact_id TEXT NOT NULL,
+                        relative_path TEXT NOT NULL,
+                        PRIMARY KEY (job_id, artifact_id),
+                        FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE CASCADE
+                    );
                     """
                 )
                 columns = {
@@ -348,6 +355,38 @@ class JobStore:
                 ),
             )
         return self.get(job_id)
+
+    def register_artifact(
+        self,
+        job_id: str,
+        artifact_id: str,
+        relative_path: str,
+    ) -> None:
+        self.get(job_id)
+        with self._lock, self._connection() as connection:
+            connection.execute(
+                """
+                INSERT INTO artifact_files (job_id, artifact_id, relative_path)
+                VALUES (?, ?, ?)
+                ON CONFLICT(job_id, artifact_id)
+                DO UPDATE SET relative_path = excluded.relative_path
+                """,
+                (job_id, artifact_id, relative_path),
+            )
+
+    def artifact_path(self, job_id: str, artifact_id: str) -> str:
+        self.get(job_id)
+        with self._lock, self._connection() as connection:
+            row = connection.execute(
+                """
+                SELECT relative_path FROM artifact_files
+                WHERE job_id = ? AND artifact_id = ?
+                """,
+                (job_id, artifact_id),
+            ).fetchone()
+        if row is None:
+            raise JobNotFoundError(f"{job_id}/{artifact_id}")
+        return str(row["relative_path"])
 
     def _update(
         self,

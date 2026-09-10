@@ -1,0 +1,215 @@
+{
+  "description": "H3 text-to-video, public-model FL2VA 20-step final candidate",
+  "prompt": {
+    "1": {
+      "class_type": "UNETLoader",
+      "inputs": {
+        "unet_name": "minimax_h3_fl2va_pruned_int8_convrot.safetensors",
+        "weight_dtype": "default"
+      }
+    },
+    "2": {
+      "class_type": "CLIPLoader",
+      "inputs": {
+        "clip_name": "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+        "type": "minimax",
+        "device": "default"
+      }
+    },
+    "3": {
+      "class_type": "VAELoader",
+      "inputs": {
+        "vae_name": "minimax_h3_video_vae_fp16.safetensors"
+      }
+    },
+    "4": {
+      "class_type": "VAELoader",
+      "inputs": {
+        "vae_name": "minimax_h3_audio_vae_fp32.safetensors"
+      }
+    },
+    "5": {
+      "class_type": "RandomNoise",
+      "inputs": {
+        "noise_seed": 20260910
+      }
+    },
+    "6": {
+      "class_type": "KSamplerSelect",
+      "inputs": {
+        "sampler_name": "res_multistep"
+      }
+    },
+    "7": {
+      "class_type": "BasicScheduler",
+      "inputs": {
+        "model": [
+          "1",
+          0
+        ],
+        "scheduler": "simple",
+        "steps": 20,
+        "denoise": 1.0
+      }
+    },
+    "8": {
+      "class_type": "BasicGuider",
+      "inputs": {
+        "model": [
+          "1",
+          0
+        ],
+        "conditioning": [
+          "20",
+          0
+        ]
+      }
+    },
+    "9": {
+      "class_type": "SamplerCustomAdvanced",
+      "inputs": {
+        "noise": [
+          "5",
+          0
+        ],
+        "guider": [
+          "8",
+          0
+        ],
+        "sampler": [
+          "6",
+          0
+        ],
+        "sigmas": [
+          "7",
+          0
+        ],
+        "latent_image": [
+          "20",
+          1
+        ]
+      }
+    },
+    "10": {
+      "class_type": "VAEDecode",
+      "inputs": {
+        "samples": [
+          "9",
+          0
+        ],
+        "vae": [
+          "3",
+          0
+        ]
+      }
+    },
+    "11": {
+      "class_type": "VAEDecodeAudio",
+      "inputs": {
+        "samples": [
+          "9",
+          0
+        ],
+        "vae": [
+          "4",
+          0
+        ]
+      }
+    },
+    "12": {
+      "class_type": "CreateVideo",
+      "inputs": {
+        "images": [
+          "10",
+          0
+        ],
+        "audio": [
+          "11",
+          0
+        ],
+        "fps": 24.0,
+        "bit_depth": 8
+      }
+    },
+    "13": {
+      "class_type": "SaveVideo",
+      "inputs": {
+        "video": [
+          "12",
+          0
+        ],
+        "filename_prefix": "video/zhihua/pending",
+        "format": "mp4",
+        "codec": "auto"
+      }
+    },
+    "20": {
+      "class_type": "MiniMaxH3ImageToVideo",
+      "inputs": {
+        "clip": [
+          "2",
+          0
+        ],
+        "vae": [
+          "3",
+          0
+        ],
+        "prompt": "Clean 2D educational animation: a luminous atom floats over a dark blue background. Three electrons orbit smoothly while the camera slowly moves closer. Soft electronic ambience, no speech, no text.",
+        "width": 1344,
+        "height": 768,
+        "length": 124
+      }
+    }
+  },
+  "bindings": {
+    "prompt": [
+      [
+        "20",
+        "inputs",
+        "prompt"
+      ]
+    ],
+    "seed": [
+      [
+        "5",
+        "inputs",
+        "noise_seed"
+      ]
+    ],
+    "width": [
+      [
+        "20",
+        "inputs",
+        "width"
+      ]
+    ],
+    "height": [
+      [
+        "20",
+        "inputs",
+        "height"
+      ]
+    ],
+    "length": [
+      [
+        "20",
+        "inputs",
+        "length"
+      ]
+    ],
+    "outputPrefix": [
+      [
+        "13",
+        "inputs",
+        "filename_prefix"
+      ]
+    ]
+  },
+  "requiredParameters": [
+    "prompt",
+    "width",
+    "height",
+    "length",
+    "outputPrefix"
+  ]
+}

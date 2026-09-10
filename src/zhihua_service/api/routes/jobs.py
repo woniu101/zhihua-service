@@ -1,6 +1,8 @@
+from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
+from fastapi.responses import FileResponse
 from starlette.concurrency import run_in_threadpool
 
 from zhihua_service.config import Settings
@@ -47,7 +49,7 @@ async def create_job(
     settings: Settings = request.app.state.settings
     if payload.workflow_id not in settings.allowed_workflows:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail={
                 "code": "workflow_not_allowed",
                 "allowed_workflows": list(settings.allowed_workflows),
@@ -120,3 +122,60 @@ async def get_result(request: Request, job_id: str) -> ResultManifest:
             detail={"code": "result_not_ready", "status": job.status.value},
         )
     return job.result_manifest
+
+
+@router.get("/{job_id}/artifacts/{artifact_id}", response_class=FileResponse)
+async def download_artifact(
+    request: Request,
+    job_id: str,
+    artifact_id: str,
+) -> FileResponse:
+    store = _store(request)
+    try:
+        job = await run_in_threadpool(store.get, job_id)
+    except JobNotFoundError as exc:
+        raise _not_found(job_id) from exc
+    artifact = next(
+        (
+            item
+            for item in (job.result_manifest.artifacts if job.result_manifest else [])
+            if item.artifact_id == artifact_id
+        ),
+        None,
+    )
+    if artifact is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "artifact_not_found", "artifact_id": artifact_id},
+        )
+    try:
+        relative_path = await run_in_threadpool(store.artifact_path, job_id, artifact_id)
+    except JobNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "artifact_not_found", "artifact_id": artifact_id},
+        ) from exc
+    root = Path(request.app.state.settings.comfyui_output_path).resolve()
+    candidate = (root / relative_path).resolve()
+    try:
+        candidate.relative_to(root)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"code": "artifact_path_invalid"},
+        ) from exc
+    if not candidate.is_file() or candidate.stat().st_size != artifact.size_bytes:
+        raise HTTPException(
+            status_code=status.HTTP_410_GONE,
+            detail={"code": "artifact_file_unavailable"},
+        )
+    return FileResponse(
+        candidate,
+        media_type=artifact.media_type,
+        filename=artifact.filename,
+        headers={
+            "ETag": f'"sha256-{artifact.sha256}"',
+            "X-Content-SHA256": artifact.sha256,
+            "Cache-Control": "private, no-store",
+        },
+    )

@@ -26,6 +26,8 @@ class Settings:
     comfyui_timeout_seconds: float
     comfyui_path: str
     comfyui_output_path: str
+    comfyui_input_path: str
+    maximum_input_bytes: int
     workflow_directory: str
     worker_poll_interval_seconds: float
     worker_retry_delay_seconds: float
@@ -61,13 +63,19 @@ def get_settings() -> Settings:
             "ZHIHUA_COMFYUI_BASE_URL",
             "http://127.0.0.1:8188",
         ).rstrip("/"),
-        comfyui_timeout_seconds=float(
-            os.getenv("ZHIHUA_COMFYUI_TIMEOUT_SECONDS", "5")
-        ),
+        comfyui_timeout_seconds=float(os.getenv("ZHIHUA_COMFYUI_TIMEOUT_SECONDS", "5")),
         comfyui_path=comfyui_path,
         comfyui_output_path=os.getenv(
             "ZHIHUA_COMFYUI_OUTPUT_PATH",
             f"{comfyui_path}/output",
+        ),
+        comfyui_input_path=os.getenv(
+            "ZHIHUA_COMFYUI_INPUT_PATH",
+            f"{comfyui_path}/input/zhihua-inputs",
+        ),
+        maximum_input_bytes=max(
+            1,
+            int(os.getenv("ZHIHUA_MAXIMUM_INPUT_BYTES", str(2 * 1024**3))),
         ),
         workflow_directory=os.getenv(
             "ZHIHUA_WORKFLOW_DIRECTORY",
@@ -92,7 +100,7 @@ def get_settings() -> Settings:
         ),
         workflow_manifest_version=os.getenv(
             "ZHIHUA_WORKFLOW_MANIFEST_VERSION",
-            "h3-workflows-2026.09.08",
+            "h3-workflows-2026.09.10",
         ),
         model_manifest_version=os.getenv(
             "ZHIHUA_MODEL_MANIFEST_VERSION",
