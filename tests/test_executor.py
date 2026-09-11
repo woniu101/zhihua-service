@@ -252,3 +252,30 @@ def test_workflow_registry_keeps_modes_distinct_and_supports_legacy_alias(tmp_pa
             "h3-fl2v-turbo-v1",
         )
     ) == ["h3-t2v-turbo-v1", "h3-fl2v-turbo-v1"]
+
+
+def test_workflow_availability_filters_missing_runtime_nodes(tmp_path) -> None:
+    directory = tmp_path / "workflows"
+    directory.mkdir()
+    (directory / "seedvr2-1080p-v1.json").write_text(
+        json.dumps(
+            {
+                "prompt": {"1": {"class_type": "SeedVR2VideoUpscaler", "inputs": {}}},
+                "requiredNodeTypes": ["SeedVR2VideoUpscaler", "SeedVR2LoadDiTModel"],
+            }
+        ),
+        encoding="utf-8",
+    )
+    registry = WorkflowRegistry(str(directory))
+
+    assert registry.runtime_node_types(("seedvr2-1080p-v1",)) == {
+        "SeedVR2VideoUpscaler",
+        "SeedVR2LoadDiTModel",
+    }
+    assert registry.available_workflows(
+        ("seedvr2-1080p-v1",), {"SeedVR2VideoUpscaler"}
+    ) == []
+    assert registry.available_workflows(
+        ("seedvr2-1080p-v1",),
+        {"SeedVR2VideoUpscaler", "SeedVR2LoadDiTModel"},
+    ) == ["seedvr2-1080p-v1"]

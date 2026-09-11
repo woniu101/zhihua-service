@@ -1,0 +1,4 @@
+SEEDVR2_NODE_REPOSITORY=https://github.com/numz/ComfyUI-SeedVR2_VideoUpscaler.git
+SEEDVR2_NODE_COMMIT=4490bd1f482e026674543386bb2a4d176da245b9
+SEEDVR2_DIT_PUBLIC_PATH=/model/ModelScope/mirror013/SeedVR2_comfyUI/seedvr2_ema_3b_fp8_e4m3fn.safetensors
+SEEDVR2_VAE_PUBLIC_PATH=/model/ModelScope/mirror013/SeedVR2_comfyUI/ema_vae_fp16.safetensors

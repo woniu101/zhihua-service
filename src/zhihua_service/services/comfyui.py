@@ -1,3 +1,4 @@
+import asyncio
 from dataclasses import dataclass
 from typing import Any
 
@@ -61,6 +62,26 @@ class ComfyUIClient:
                 base_url=self._base_url,
                 detail=type(exc).__name__,
             )
+
+    async def find_node_types(self, node_types: set[str]) -> set[str] | None:
+        """Return installed ComfyUI node types, or None while ComfyUI is offline."""
+        if not node_types:
+            return set()
+
+        async def probe(node_type: str) -> tuple[str, bool]:
+            response = await self._client.get(f"{self._base_url}/object_info/{node_type}")
+            if response.status_code >= 500:
+                response.raise_for_status()
+            if response.status_code >= 400:
+                return node_type, False
+            payload = response.json()
+            return node_type, isinstance(payload, dict) and node_type in payload
+
+        try:
+            results = await asyncio.gather(*(probe(node_type) for node_type in node_types))
+        except (httpx.HTTPError, ValueError):
+            return None
+        return {node_type for node_type, installed in results if installed}
 
     async def submit_prompt(
         self,

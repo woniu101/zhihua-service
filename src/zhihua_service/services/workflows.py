@@ -28,7 +28,7 @@ class WorkflowRegistry:
         workflow_id: str,
         parameters: dict[str, Any],
     ) -> dict[str, Any]:
-        prompt, bindings, required_parameters = self._load_template(workflow_id)
+        prompt, bindings, required_parameters, _ = self._load_template(workflow_id)
         missing = [name for name in required_parameters if name not in parameters]
         if missing:
             raise WorkflowTemplateError(f"workflow parameters are missing: {', '.join(missing)}")
@@ -50,7 +50,7 @@ class WorkflowRegistry:
     def _load_template(
         self,
         workflow_id: str,
-    ) -> tuple[dict[str, Any], dict[str, list[list[Any]]], list[str]]:
+    ) -> tuple[dict[str, Any], dict[str, list[list[Any]]], list[str], set[str]]:
         template_id = COMPATIBILITY_ALIASES.get(workflow_id, workflow_id)
         path = self._directory / f"{template_id}.json"
         try:
@@ -71,12 +71,20 @@ class WorkflowRegistry:
             prompt = raw.get("prompt")
             bindings = raw.get("bindings", {})
             required_parameters = raw.get("requiredParameters", [])
-            if set(raw) - {"prompt", "bindings", "description", "requiredParameters"}:
+            required_node_types = raw.get("requiredNodeTypes", [])
+            if set(raw) - {
+                "prompt",
+                "bindings",
+                "description",
+                "requiredParameters",
+                "requiredNodeTypes",
+            }:
                 raise WorkflowTemplateError("workflow template has unsupported fields")
         else:
             prompt = raw
             bindings = {}
             required_parameters = []
+            required_node_types = []
 
         if not isinstance(prompt, dict) or not prompt:
             raise WorkflowTemplateError("workflow prompt must be a non-empty object")
@@ -86,6 +94,10 @@ class WorkflowRegistry:
             isinstance(item, str) and item for item in required_parameters
         ):
             raise WorkflowTemplateError("requiredParameters must be a list of names")
+        if not isinstance(required_node_types, list) or not all(
+            isinstance(item, str) and item for item in required_node_types
+        ):
+            raise WorkflowTemplateError("requiredNodeTypes must be a list of names")
         for parameter_name, paths in bindings.items():
             if (
                 not isinstance(paths, list)
@@ -97,14 +109,33 @@ class WorkflowRegistry:
                 )
             for binding_path in paths:
                 self._set_path(copy.deepcopy(prompt), binding_path, None)
-        return prompt, bindings, required_parameters
+        return prompt, bindings, required_parameters, set(required_node_types)
 
-    def available_workflows(self, accepted_workflows: tuple[str, ...]) -> list[str]:
+    def runtime_node_types(self, accepted_workflows: tuple[str, ...]) -> set[str]:
+        required: set[str] = set()
+        for workflow_id in accepted_workflows:
+            try:
+                _, _, _, node_types = self._load_template(workflow_id)
+            except WorkflowTemplateError:
+                continue
+            required.update(node_types)
+        return required
+
+    def available_workflows(
+        self,
+        accepted_workflows: tuple[str, ...],
+        installed_node_types: set[str] | None = None,
+    ) -> list[str]:
         available: list[str] = []
         for workflow_id in accepted_workflows:
             try:
-                self._load_template(workflow_id)
+                _, _, _, required_node_types = self._load_template(workflow_id)
             except WorkflowTemplateError:
+                continue
+            if (
+                installed_node_types is not None
+                and not required_node_types.issubset(installed_node_types)
+            ):
                 continue
             available.append(workflow_id)
         return available

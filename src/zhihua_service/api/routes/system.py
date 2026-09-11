@@ -52,11 +52,18 @@ async def version(request: Request) -> VersionResponse:
 async def capabilities(request: Request) -> CapabilitiesResponse:
     settings: Settings = request.app.state.settings
     workflows: WorkflowRegistry = request.app.state.workflows
+    comfyui: ComfyUIClient = request.app.state.comfyui
+    installed_node_types = await comfyui.find_node_types(
+        workflows.runtime_node_types(settings.allowed_workflows)
+    )
     return CapabilitiesResponse(
         authentication_configured=settings.authentication_configured,
         features=FEATURES,
         workflows=list(settings.allowed_workflows),
-        available_workflows=workflows.available_workflows(settings.allowed_workflows),
+        available_workflows=workflows.available_workflows(
+            settings.allowed_workflows,
+            installed_node_types,
+        ),
         job_kinds=[kind.value for kind in JobKind],
         job_statuses=[job_status.value for job_status in JobStatus],
     )

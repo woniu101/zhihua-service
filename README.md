@@ -33,6 +33,14 @@ cd /root/zhihua-service
 .venv/bin/python -m pip install -e '.[dev]'
 ```
 
+新镜像还需要安装固定版本的 SeedVR2 自定义节点，并把公共模型库中的权重接入 ComfyUI：
+
+```bash
+bash deploy/install-comfyui-runtime.sh
+```
+
+脚本只为 3B FP8 DiT 和 VAE 创建指向只读 `/model` 公共模型库的符号链接，不复制或重新下载模型权重。节点提交版本和公共模型路径记录在 `deploy/comfyui-runtime.lock`。脚本完成后重启 ComfyUI。
+
 启动开发服务：
 
 ```bash
@@ -139,5 +147,6 @@ as a compatibility alias for h3-flf2v-turbo-v1.
 
 The capabilities response keeps workflows as the accepted identifier list and adds
 available_workflows for templates that are installed and structurally readable on this instance.
-A client should enable generation from available_workflows rather than assuming every accepted
-identifier is installed.
+Templates can also declare requiredNodeTypes. When ComfyUI is reachable, those node types must
+be loaded before the workflow is reported as available. A client should enable generation from
+available_workflows rather than assuming every accepted identifier is installed.

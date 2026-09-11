@@ -1,5 +1,10 @@
 {
   "description": "SeedVR2 temporal video upscale to 1920x1080",
+  "requiredNodeTypes": [
+    "SeedVR2LoadDiTModel",
+    "SeedVR2LoadVAEModel",
+    "SeedVR2VideoUpscaler"
+  ],
   "prompt": {
     "1": {
       "class_type": "LoadVideo",
