@@ -43,7 +43,7 @@ def test_version_contract() -> None:
         "service_version": "0.4.0",
         "api_version": "v1",
         "minimum_client_version": "0.1.0",
-        "workflow_manifest_version": "zhihua-workflows-2026.09.11",
+        "workflow_manifest_version": "zhihua-workflows-2026.09.11-r2",
         "model_manifest_version": "public-models-2026.09.08",
     }
 

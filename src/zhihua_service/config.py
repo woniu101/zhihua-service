@@ -16,7 +16,7 @@ DEFAULT_WORKFLOWS = (
     "seedvr2-1080p-v1",
 )
 
-WORKFLOW_MANIFEST_VERSION = "zhihua-workflows-2026.09.11"
+WORKFLOW_MANIFEST_VERSION = "zhihua-workflows-2026.09.11-r2"
 MODEL_MANIFEST_VERSION = "public-models-2026.09.08"
 
 

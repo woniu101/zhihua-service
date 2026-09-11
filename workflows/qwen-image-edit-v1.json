@@ -167,10 +167,23 @@
       }
     },
     "15": {
+      "class_type": "ImageScale",
+      "inputs": {
+        "image": [
+          "14",
+          0
+        ],
+        "upscale_method": "lanczos",
+        "width": 1344,
+        "height": 768,
+        "crop": "center"
+      }
+    },
+    "16": {
       "class_type": "SaveImage",
       "inputs": {
         "images": [
-          "14",
+          "15",
           0
         ],
         "filename_prefix": "zhihua_validation/edit"
@@ -199,9 +212,23 @@
         "seed"
       ]
     ],
-    "outputPrefix": [
+    "width": [
       [
         "15",
+        "inputs",
+        "width"
+      ]
+    ],
+    "height": [
+      [
+        "15",
+        "inputs",
+        "height"
+      ]
+    ],
+    "outputPrefix": [
+      [
+        "16",
         "inputs",
         "filename_prefix"
       ]
@@ -210,6 +237,8 @@
   "requiredParameters": [
     "sourceImageFile",
     "prompt",
+    "width",
+    "height",
     "outputPrefix"
   ],
   "requiredNodeTypes": [

@@ -67,6 +67,10 @@ def test_qwen_image_workflows_bind_only_reviewed_generation_fields() -> None:
     assert edited["1"]["inputs"]["image"] == "zhihua-inputs/frame.png"
     assert edited["8"]["inputs"]["prompt"] == "将天空改成晴天"
     assert edited["3"]["inputs"]["unet_name"].endswith("qwen_image_edit_2511_fp8mixed.safetensors")
+    assert edited["15"]["inputs"]["width"] == 768
+    assert edited["15"]["inputs"]["height"] == 1024
+    assert edited["15"]["inputs"]["crop"] == "center"
+    assert edited["16"]["inputs"]["images"] == ["15", 0]
 
 
 @pytest.mark.parametrize(
