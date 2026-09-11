@@ -56,9 +56,10 @@ class JobProcessor:
             return
         job, parameters = claimed
         try:
+            output_kind = "image" if job.kind.value.startswith("image_") else "video"
             parameters = {
                 **parameters,
-                "outputPrefix": f"video/zhihua/{job.project_id}/{job.scene_id}/{job.id}",
+                "outputPrefix": f"{output_kind}/zhihua/{job.project_id}/{job.scene_id}/{job.id}",
             }
             prompt = self._workflows.build_prompt(job.workflow_id, parameters)
             prompt_id = await self._comfyui.submit_prompt(prompt, client_id=job.id)

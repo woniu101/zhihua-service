@@ -29,6 +29,8 @@ FEATURES = [
     "result_manifest_v1",
     "authenticated_input_upload",
     "range_artifact_download",
+    "qwen_image_generation",
+    "qwen_image_edit",
 ]
 
 

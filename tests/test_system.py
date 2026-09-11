@@ -12,7 +12,7 @@ def test_health() -> None:
     assert response.json() == {
         "status": "ok",
         "service": "zhihua-service",
-        "version": "0.3.0",
+        "version": "0.4.0",
     }
 
 
@@ -40,10 +40,10 @@ def test_version_contract() -> None:
 
     assert response.status_code == 200
     assert response.json() == {
-        "service_version": "0.3.0",
+        "service_version": "0.4.0",
         "api_version": "v1",
         "minimum_client_version": "0.1.0",
-        "workflow_manifest_version": "h3-workflows-2026.09.11",
+        "workflow_manifest_version": "zhihua-workflows-2026.09.11",
         "model_manifest_version": "public-models-2026.09.08",
     }
 
@@ -66,11 +66,16 @@ def test_capabilities_describe_secure_job_contract() -> None:
         "job_cancellation",
         "result_manifest_v1",
         "authenticated_input_upload",
-        "range_artifact_download",
-    ]
+            "range_artifact_download",
+            "qwen_image_generation",
+            "qwen_image_edit",
+        ]
     assert isinstance(payload["available_workflows"], list)
     assert set(payload["available_workflows"]).issubset(payload["workflows"])
     assert "h3-t2v-turbo-v1" in payload["workflows"]
     assert "h3-ref2va-high-v1" in payload["workflows"]
+    assert "qwen-image-generate-v1" in payload["workflows"]
+    assert "image_generation" in payload["job_kinds"]
+    assert "image_edit" in payload["job_kinds"]
     assert "video_reference_remake" in payload["job_kinds"]
     assert "interrupted" in payload["job_statuses"]

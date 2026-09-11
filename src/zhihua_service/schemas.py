@@ -83,6 +83,8 @@ class HandshakeResponse(StrictModel):
 
 
 class JobKind(str, Enum):
+    IMAGE_GENERATION = "image_generation"
+    IMAGE_EDIT = "image_edit"
     VIDEO_CANDIDATE = "video_candidate"
     VIDEO_REFERENCE_REMAKE = "video_reference_remake"
     VIDEO_UPSCALE = "video_upscale"

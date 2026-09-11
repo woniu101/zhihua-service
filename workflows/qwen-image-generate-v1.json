@@ -1,0 +1,164 @@
+{
+  "description": "Qwen Image 2512 text-to-image using public model library",
+  "prompt": {
+    "1": {
+      "class_type": "UNETLoader",
+      "inputs": {
+        "unet_name": "Qwen-Image_ComfyUI/qwen_image_2512_fp8_e4m3fn.safetensors",
+        "weight_dtype": "default"
+      }
+    },
+    "2": {
+      "class_type": "CLIPLoader",
+      "inputs": {
+        "clip_name": "qwen_2.5_vl_7b_fp8_scaled.safetensors",
+        "type": "qwen_image",
+        "device": "default"
+      }
+    },
+    "3": {
+      "class_type": "VAELoader",
+      "inputs": {
+        "vae_name": "qwen_image_vae.safetensors"
+      }
+    },
+    "4": {
+      "class_type": "ModelSamplingAuraFlow",
+      "inputs": {
+        "model": [
+          "1",
+          0
+        ],
+        "shift": 3.1
+      }
+    },
+    "5": {
+      "class_type": "CLIPTextEncode",
+      "inputs": {
+        "clip": [
+          "2",
+          0
+        ],
+        "text": "A clean educational illustration of a friendly small red robot standing beside a bright blue globe on a white studio background, soft shadows, clear shapes, high detail, no text, square composition"
+      }
+    },
+    "6": {
+      "class_type": "CLIPTextEncode",
+      "inputs": {
+        "clip": [
+          "2",
+          0
+        ],
+        "text": "blurry, distorted, extra limbs, unreadable text, watermark"
+      }
+    },
+    "7": {
+      "class_type": "EmptySD3LatentImage",
+      "inputs": {
+        "width": 512,
+        "height": 512,
+        "batch_size": 1
+      }
+    },
+    "8": {
+      "class_type": "KSampler",
+      "inputs": {
+        "model": [
+          "4",
+          0
+        ],
+        "seed": 20260908,
+        "steps": 12,
+        "cfg": 4.0,
+        "sampler_name": "euler",
+        "scheduler": "simple",
+        "positive": [
+          "5",
+          0
+        ],
+        "negative": [
+          "6",
+          0
+        ],
+        "latent_image": [
+          "7",
+          0
+        ],
+        "denoise": 1.0
+      }
+    },
+    "9": {
+      "class_type": "VAEDecode",
+      "inputs": {
+        "samples": [
+          "8",
+          0
+        ],
+        "vae": [
+          "3",
+          0
+        ]
+      }
+    },
+    "10": {
+      "class_type": "SaveImage",
+      "inputs": {
+        "images": [
+          "9",
+          0
+        ],
+        "filename_prefix": "zhihua_validation/t2i"
+      }
+    }
+  },
+  "bindings": {
+    "prompt": [
+      [
+        "5",
+        "inputs",
+        "text"
+      ]
+    ],
+    "negativePrompt": [
+      [
+        "6",
+        "inputs",
+        "text"
+      ]
+    ],
+    "width": [
+      [
+        "7",
+        "inputs",
+        "width"
+      ]
+    ],
+    "height": [
+      [
+        "7",
+        "inputs",
+        "height"
+      ]
+    ],
+    "seed": [
+      [
+        "8",
+        "inputs",
+        "seed"
+      ]
+    ],
+    "outputPrefix": [
+      [
+        "10",
+        "inputs",
+        "filename_prefix"
+      ]
+    ]
+  },
+  "requiredParameters": [
+    "prompt",
+    "width",
+    "height",
+    "outputPrefix"
+  ]
+}

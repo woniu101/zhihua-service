@@ -5,6 +5,16 @@ from pathlib import Path
 from zhihua_service.schemas import EnvironmentStatusResponse
 
 REQUIRED_MODELS = (
+    (
+        "diffusion_models/Qwen-Image_ComfyUI",
+        "qwen_image_2512_fp8_e4m3fn.safetensors",
+    ),
+    (
+        "diffusion_models/Qwen-Image-Edit_ComfyUI",
+        "qwen_image_edit_2511_fp8mixed.safetensors",
+    ),
+    ("text_encoders", "qwen_2.5_vl_7b_fp8_scaled.safetensors"),
+    ("vae", "qwen_image_vae.safetensors"),
     ("diffusion_models", "minimax_h3_fl2va_pruned_int8_convrot.safetensors"),
     ("diffusion_models", "minimax_h3_ref2va_pruned_int8_convrot.safetensors"),
     ("text_encoders", "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors"),

@@ -11,6 +11,7 @@ WORKFLOW_DIR = Path(__file__).parents[1] / "workflows"
 def _parameters(workflow_id: str) -> dict[str, object]:
     values: dict[str, object] = {
         "prompt": "A calm educational animation",
+        "negativePrompt": "blurry, distorted, watermark",
         "seed": 42,
         "width": 1344,
         "height": 768,
@@ -25,6 +26,7 @@ def _parameters(workflow_id: str) -> dict[str, object]:
         "referenceVideoFile": "zhihua-inputs/reference.mp4",
         "referenceImageFile": "zhihua-inputs/reference.png",
         "sourceVideoFile": "zhihua-inputs/source.mp4",
+        "sourceImageFile": "zhihua-inputs/source.png",
     }
     return values
 
@@ -47,6 +49,24 @@ def test_h3_audio_can_be_removed_from_the_candidate_container() -> None:
     prompt = registry.build_prompt("h3-t2v-turbo-v1", parameters)
     create_video = next(node for node in prompt.values() if node.get("class_type") == "CreateVideo")
     assert "audio" not in create_video["inputs"]
+
+
+def test_qwen_image_workflows_bind_only_reviewed_generation_fields() -> None:
+    registry = WorkflowRegistry(str(WORKFLOW_DIR))
+    parameters = _parameters("qwen-image-generate-v1")
+    parameters.update({"prompt": "一只红色机器人", "width": 768, "height": 1024, "seed": 7})
+    prompt = registry.build_prompt("qwen-image-generate-v1", parameters)
+    assert prompt["5"]["inputs"]["text"] == "一只红色机器人"
+    assert prompt["7"]["inputs"]["width"] == 768
+    assert prompt["7"]["inputs"]["height"] == 1024
+    assert prompt["8"]["inputs"]["seed"] == 7
+    assert prompt["1"]["inputs"]["unet_name"].endswith("qwen_image_2512_fp8_e4m3fn.safetensors")
+
+    parameters.update({"sourceImageFile": "zhihua-inputs/frame.png", "prompt": "将天空改成晴天"})
+    edited = registry.build_prompt("qwen-image-edit-v1", parameters)
+    assert edited["1"]["inputs"]["image"] == "zhihua-inputs/frame.png"
+    assert edited["8"]["inputs"]["prompt"] == "将天空改成晴天"
+    assert edited["3"]["inputs"]["unet_name"].endswith("qwen_image_edit_2511_fp8mixed.safetensors")
 
 
 @pytest.mark.parametrize(
@@ -84,6 +104,7 @@ def test_seedvr2_preserves_the_candidate_frame_without_a_second_crop() -> None:
         ("h3-flf2v-high-v1", "lastFrameFile"),
         ("h3-ref2va-high-v1", "referenceVideoFile"),
         ("seedvr2-1080p-v1", "sourceVideoFile"),
+        ("qwen-image-edit-v1", "sourceImageFile"),
     ],
 )
 def test_media_workflows_reject_missing_required_inputs(

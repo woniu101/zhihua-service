@@ -3,6 +3,8 @@ from dataclasses import dataclass
 from functools import lru_cache
 
 DEFAULT_WORKFLOWS = (
+    "qwen-image-generate-v1",
+    "qwen-image-edit-v1",
     "h3-t2v-turbo-v1",
     "h3-t2v-high-v1",
     "h3-i2v-turbo-v1",
@@ -14,7 +16,7 @@ DEFAULT_WORKFLOWS = (
     "seedvr2-1080p-v1",
 )
 
-WORKFLOW_MANIFEST_VERSION = "h3-workflows-2026.09.11"
+WORKFLOW_MANIFEST_VERSION = "zhihua-workflows-2026.09.11"
 MODEL_MANIFEST_VERSION = "public-models-2026.09.08"
 
 
