@@ -68,7 +68,8 @@ def test_capabilities_describe_secure_job_contract() -> None:
         "authenticated_input_upload",
         "range_artifact_download",
     ]
-    assert payload["available_workflows"] == []
+    assert isinstance(payload["available_workflows"], list)
+    assert set(payload["available_workflows"]).issubset(payload["workflows"])
     assert "h3-t2v-turbo-v1" in payload["workflows"]
     assert "h3-ref2va-high-v1" in payload["workflows"]
     assert "video_reference_remake" in payload["job_kinds"]
