@@ -21,7 +21,7 @@ def _payload(request_id: str = "request-1") -> dict[str, object]:
         "project_id": "project-1",
         "scene_id": "scene-1",
         "kind": "video_candidate",
-        "workflow_id": "h3-fl2v-turbo-v1",
+        "workflow_id": "h3-flf2v-turbo-v1",
         "parameters": {"duration_seconds": 5, "aspect_ratio": "16:9"},
     }
 

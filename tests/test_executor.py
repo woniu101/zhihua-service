@@ -3,12 +3,13 @@ import hashlib
 import json
 
 import httpx
+import pytest
 
 from zhihua_service.schemas import JobCreateRequest, JobKind, JobStatus
 from zhihua_service.services.comfyui import ComfyUIClient
 from zhihua_service.services.executor import JobProcessor
 from zhihua_service.services.jobs import JobStore
-from zhihua_service.services.workflows import WorkflowRegistry
+from zhihua_service.services.workflows import WorkflowRegistry, WorkflowTemplateMissingError
 
 
 def _request(request_id: str) -> JobCreateRequest:
@@ -225,7 +226,7 @@ def test_missing_workflow_template_is_explained_without_http_call(tmp_path) -> N
     asyncio.run(run())
 
 
-def test_workflow_registry_keeps_modes_distinct_and_supports_legacy_alias(tmp_path) -> None:
+def test_workflow_registry_keeps_modes_distinct_and_rejects_unknown_ids(tmp_path) -> None:
     directory = tmp_path / "workflows"
     directory.mkdir()
     for workflow_id, marker in (
@@ -244,14 +245,15 @@ def test_workflow_registry_keeps_modes_distinct_and_supports_legacy_alias(tmp_pa
     assert registry.build_prompt("h3-i2v-turbo-v1", {})["1"]["class_type"] == "i2v"
     assert registry.build_prompt("h3-flf2v-turbo-v1", {})["1"]["class_type"] == "flf2v"
     assert registry.build_prompt("h3-ref2va-turbo-v1", {})["1"]["class_type"] == "ref2va"
-    assert registry.build_prompt("h3-fl2v-turbo-v1", {})["1"]["class_type"] == "flf2v"
     assert registry.available_workflows(
         (
             "h3-t2v-turbo-v1",
             "h3-ref2va-high-v1",
-            "h3-fl2v-turbo-v1",
+            "h3-flf2v-turbo-v1",
         )
-    ) == ["h3-t2v-turbo-v1", "h3-fl2v-turbo-v1"]
+    ) == ["h3-t2v-turbo-v1", "h3-flf2v-turbo-v1"]
+    with pytest.raises(WorkflowTemplateMissingError):
+        registry.build_prompt("h3-fl2v-turbo-v1", {})
 
 
 def test_workflow_availability_filters_missing_runtime_nodes(tmp_path) -> None:
@@ -272,9 +274,7 @@ def test_workflow_availability_filters_missing_runtime_nodes(tmp_path) -> None:
         "SeedVR2VideoUpscaler",
         "SeedVR2LoadDiTModel",
     }
-    assert registry.available_workflows(
-        ("seedvr2-1080p-v1",), {"SeedVR2VideoUpscaler"}
-    ) == []
+    assert registry.available_workflows(("seedvr2-1080p-v1",), {"SeedVR2VideoUpscaler"}) == []
     assert registry.available_workflows(
         ("seedvr2-1080p-v1",),
         {"SeedVR2VideoUpscaler", "SeedVR2LoadDiTModel"},

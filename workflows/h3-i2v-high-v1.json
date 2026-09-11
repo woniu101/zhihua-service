@@ -120,7 +120,7 @@
       "class_type": "CreateVideo",
       "inputs": {
         "images": [
-          "10",
+          "30",
           0
         ],
         "audio": [
@@ -168,6 +168,19 @@
           "21",
           0
         ]
+      }
+    },
+    "30": {
+      "class_type": "ImageCrop",
+      "inputs": {
+        "image": [
+          "10",
+          0
+        ],
+        "width": 1344,
+        "height": 756,
+        "x": 0,
+        "y": 6
       }
     }
   },
@@ -220,6 +233,34 @@
         "inputs",
         "image"
       ]
+    ],
+    "visibleWidth": [
+      [
+        "30",
+        "inputs",
+        "width"
+      ]
+    ],
+    "visibleHeight": [
+      [
+        "30",
+        "inputs",
+        "height"
+      ]
+    ],
+    "cropX": [
+      [
+        "30",
+        "inputs",
+        "x"
+      ]
+    ],
+    "cropY": [
+      [
+        "30",
+        "inputs",
+        "y"
+      ]
     ]
   },
   "requiredParameters": [
@@ -228,6 +269,10 @@
     "height",
     "length",
     "firstFrameFile",
-    "outputPrefix"
+    "outputPrefix",
+    "visibleWidth",
+    "visibleHeight",
+    "cropX",
+    "cropY"
   ]
 }

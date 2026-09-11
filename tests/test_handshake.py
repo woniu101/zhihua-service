@@ -15,7 +15,7 @@ def test_handshake_requires_bearer_token() -> None:
             json={
                 "client_version": "0.1.0",
                 "supported_api_versions": ["v1"],
-                "workflow_manifest_versions": ["h3-workflows-2026.09.10"],
+                "workflow_manifest_versions": ["h3-workflows-2026.09.11"],
                 "model_manifest_versions": ["public-models-2026.09.08"],
             },
         )
@@ -33,7 +33,7 @@ def test_handshake_accepts_matching_contract() -> None:
             json={
                 "client_version": "0.1.0",
                 "supported_api_versions": ["v1"],
-                "workflow_manifest_versions": ["h3-workflows-2026.09.10"],
+                "workflow_manifest_versions": ["h3-workflows-2026.09.11"],
                 "model_manifest_versions": ["public-models-2026.09.08"],
             },
         )

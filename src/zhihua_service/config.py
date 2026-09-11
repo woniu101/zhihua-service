@@ -12,7 +12,6 @@ DEFAULT_WORKFLOWS = (
     "h3-ref2va-turbo-v1",
     "h3-ref2va-high-v1",
     "seedvr2-1080p-v1",
-    "h3-fl2v-turbo-v1",
 )
 
 
@@ -100,7 +99,7 @@ def get_settings() -> Settings:
         ),
         workflow_manifest_version=os.getenv(
             "ZHIHUA_WORKFLOW_MANIFEST_VERSION",
-            "h3-workflows-2026.09.10",
+            "h3-workflows-2026.09.11",
         ),
         model_manifest_version=os.getenv(
             "ZHIHUA_MODEL_MANIFEST_VERSION",

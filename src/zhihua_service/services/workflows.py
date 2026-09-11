@@ -12,11 +12,6 @@ class WorkflowTemplateMissingError(WorkflowTemplateError):
     code = "workflow_template_missing"
 
 
-COMPATIBILITY_ALIASES = {
-    "h3-fl2v-turbo-v1": "h3-flf2v-turbo-v1",
-}
-
-
 class WorkflowRegistry:
     """Loads ComfyUI API-format prompts selected by trusted workflow identifiers."""
 
@@ -51,8 +46,7 @@ class WorkflowRegistry:
         self,
         workflow_id: str,
     ) -> tuple[dict[str, Any], dict[str, list[list[Any]]], list[str], set[str]]:
-        template_id = COMPATIBILITY_ALIASES.get(workflow_id, workflow_id)
-        path = self._directory / f"{template_id}.json"
+        path = self._directory / f"{workflow_id}.json"
         try:
             raw = json.loads(path.read_text(encoding="utf-8"))
         except FileNotFoundError as exc:
@@ -132,9 +126,8 @@ class WorkflowRegistry:
                 _, _, _, required_node_types = self._load_template(workflow_id)
             except WorkflowTemplateError:
                 continue
-            if (
-                installed_node_types is not None
-                and not required_node_types.issubset(installed_node_types)
+            if installed_node_types is not None and not required_node_types.issubset(
+                installed_node_types
             ):
                 continue
             available.append(workflow_id)

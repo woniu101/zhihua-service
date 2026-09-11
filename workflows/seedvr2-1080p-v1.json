@@ -1,5 +1,5 @@
 {
-  "description": "SeedVR2 temporal video upscale to 1920x1080",
+  "description": "SeedVR2 temporal video enhancement targeting the project 1080 edge",
   "requiredNodeTypes": [
     "SeedVR2LoadDiTModel",
     "SeedVR2LoadVAEModel",
@@ -19,19 +19,6 @@
           "1",
           0
         ]
-      }
-    },
-    "6": {
-      "class_type": "ImageCrop",
-      "inputs": {
-        "image": [
-          "2",
-          0
-        ],
-        "width": 1344,
-        "height": 756,
-        "x": 0,
-        "y": 6
       }
     },
     "3": {
@@ -66,7 +53,7 @@
       "class_type": "SeedVR2VideoUpscaler",
       "inputs": {
         "image": [
-          "6",
+          "2",
           0
         ],
         "dit": [

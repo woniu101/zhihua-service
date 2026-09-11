@@ -142,8 +142,8 @@ probe and one GPU smoke test before publication.
 ## MVP workflow identifiers
 
 The accepted H3 identifiers are t2v, i2v, flf2v, and ref2va, each with turbo-v1 and
-high-v1 variants. seedvr2-1080p-v1 covers final upscaling. h3-fl2v-turbo-v1 remains accepted only
-as a compatibility alias for h3-flf2v-turbo-v1.
+high-v1 variants. seedvr2-1080p-v1 covers optional temporal enhancement. Legacy workflow
+identifiers are not retained during initial development.
 
 The capabilities response keeps workflows as the accepted identifier list and adds
 available_workflows for templates that are installed and structurally readable on this instance.

@@ -14,6 +14,10 @@ def _parameters(workflow_id: str) -> dict[str, object]:
         "seed": 42,
         "width": 1344,
         "height": 768,
+        "visibleWidth": 1344,
+        "visibleHeight": 756,
+        "cropX": 0,
+        "cropY": 6,
         "length": 124,
         "outputPrefix": "video/zhihua/project/scene/job",
         "firstFrameFile": "zhihua-inputs/first.png",
@@ -41,10 +45,36 @@ def test_h3_audio_can_be_removed_from_the_candidate_container() -> None:
     parameters = _parameters("h3-t2v-turbo-v1")
     parameters["discardH3Audio"] = True
     prompt = registry.build_prompt("h3-t2v-turbo-v1", parameters)
-    create_video = next(
-        node for node in prompt.values() if node.get("class_type") == "CreateVideo"
-    )
+    create_video = next(node for node in prompt.values() if node.get("class_type") == "CreateVideo")
     assert "audio" not in create_video["inputs"]
+
+
+@pytest.mark.parametrize(
+    "workflow_id", [item for item in DEFAULT_WORKFLOWS if item.startswith("h3-")]
+)
+def test_h3_candidates_are_cropped_to_the_visible_project_frame(workflow_id: str) -> None:
+    registry = WorkflowRegistry(str(WORKFLOW_DIR))
+    prompt = registry.build_prompt(workflow_id, _parameters(workflow_id))
+    crop = next(node for node in prompt.values() if node.get("class_type") == "ImageCrop")
+    create_video = next(node for node in prompt.values() if node.get("class_type") == "CreateVideo")
+    assert crop["inputs"] == {
+        "image": ["10", 0],
+        "width": 1344,
+        "height": 756,
+        "x": 0,
+        "y": 6,
+    }
+    assert create_video["inputs"]["images"] == ["30", 0]
+
+
+def test_seedvr2_preserves_the_candidate_frame_without_a_second_crop() -> None:
+    registry = WorkflowRegistry(str(WORKFLOW_DIR))
+    prompt = registry.build_prompt("seedvr2-1080p-v1", _parameters("seedvr2-1080p-v1"))
+    assert all(node.get("class_type") != "ImageCrop" for node in prompt.values())
+    upscaler = next(
+        node for node in prompt.values() if node.get("class_type") == "SeedVR2VideoUpscaler"
+    )
+    assert upscaler["inputs"]["image"] == ["2", 0]
 
 
 @pytest.mark.parametrize(
