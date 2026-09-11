@@ -28,6 +28,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         comfyui,
         workflows,
         output_directory=settings.comfyui_output_path,
+        input_directory=settings.comfyui_input_path,
         retry_delay_seconds=settings.worker_retry_delay_seconds,
     )
     worker = asyncio.create_task(

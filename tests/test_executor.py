@@ -51,6 +51,10 @@ def test_processor_submits_polls_and_persists_result_manifest(tmp_path) -> None:
     async def run() -> None:
         workflow_directory = tmp_path / "workflows"
         output_directory = tmp_path / "output"
+        input_directory = tmp_path / "inputs"
+        input_directory.mkdir()
+        uploaded_input = input_directory / "frame.png"
+        uploaded_input.write_bytes(b"uploaded-frame")
         _write_workflow(workflow_directory)
         generated = output_directory / "project" / "clip.mp4"
         generated.parent.mkdir(parents=True)
@@ -91,13 +95,16 @@ def test_processor_submits_polls_and_persists_result_manifest(tmp_path) -> None:
             raise AssertionError(f"unexpected request: {request.method} {request.url}")
 
         store = JobStore(str(tmp_path / "jobs.sqlite3"))
-        created, _ = store.create(_request("request-complete"))
+        request = _request("request-complete")
+        request.parameters["firstFrameFile"] = "zhihua-inputs/frame.png"
+        created, _ = store.create(request)
         async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http_client:
             processor = JobProcessor(
                 store,
                 ComfyUIClient(http_client, "http://comfy.test"),
                 WorkflowRegistry(str(workflow_directory)),
                 output_directory=str(output_directory),
+                input_directory=str(input_directory),
             )
             await processor.tick()
             running = store.get(created.id)
@@ -117,6 +124,7 @@ def test_processor_submits_polls_and_persists_result_manifest(tmp_path) -> None:
         assert artifact.kind == "video"
         assert artifact.filename == "clip.mp4"
         assert artifact.sha256 == hashlib.sha256(b"fake-video-content").hexdigest()
+        assert not uploaded_input.exists()
         assert calls == ["POST /prompt", "GET /history/prompt-123"]
 
     asyncio.run(run())

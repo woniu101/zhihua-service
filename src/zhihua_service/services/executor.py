@@ -32,12 +32,14 @@ class JobProcessor:
         workflows: WorkflowRegistry,
         *,
         output_directory: str,
+        input_directory: str | None = None,
         retry_delay_seconds: float = 30.0,
     ) -> None:
         self._jobs = jobs
         self._comfyui = comfyui
         self._workflows = workflows
         self._output_directory = Path(output_directory)
+        self._input_directory = Path(input_directory).resolve() if input_directory else None
         self._retry_delay_seconds = retry_delay_seconds
         self._deferred_until = 0.0
 
@@ -68,6 +70,7 @@ class JobProcessor:
             self._deferred_until = loop.time() + self._retry_delay_seconds
         except (WorkflowTemplateError, ComfyUIPromptRejectedError) as exc:
             self._jobs.fail(job.id, exc.code, str(exc))
+            self._cleanup_input_files(parameters)
         except ComfyUIError as exc:
             self._jobs.defer(job.id, exc.code, str(exc))
         else:
@@ -96,6 +99,7 @@ class JobProcessor:
                 "comfyui_execution_failed",
                 history.detail or "ComfyUI execution failed",
             )
+            self._cleanup_input_files(self._jobs.parameters(job_id))
             return
 
         job = self._jobs.get(job_id)
@@ -116,6 +120,28 @@ class JobProcessor:
             artifacts=artifacts,
         )
         self._jobs.complete(job_id, manifest)
+        self._cleanup_input_files(self._jobs.parameters(job_id))
+
+    def _cleanup_input_files(self, parameters: dict[str, object]) -> None:
+        root = self._input_directory
+        if root is None:
+            return
+        for key, value in parameters.items():
+            if not key.endswith("File") or not isinstance(value, str):
+                continue
+            prefix = "zhihua-inputs/"
+            if not value.startswith(prefix):
+                continue
+            relative = Path(value.removeprefix(prefix))
+            if relative.name != str(relative) or not relative.name:
+                continue
+            candidate = (root / relative.name).resolve()
+            try:
+                candidate.relative_to(root)
+            except ValueError:
+                continue
+            with suppress(OSError):
+                candidate.unlink()
 
     def _artifact(
         self,

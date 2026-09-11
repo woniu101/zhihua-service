@@ -157,6 +157,18 @@ class JobStore:
             raise JobNotFoundError(job_id)
         return self._to_response(row)
 
+    def parameters(self, job_id: str) -> dict[str, Any]:
+        self._ensure_schema()
+        with self._lock, self._connection() as connection:
+            row = connection.execute(
+                "SELECT parameters_json FROM jobs WHERE id = ?",
+                (job_id,),
+            ).fetchone()
+        if row is None:
+            raise JobNotFoundError(job_id)
+        value = json.loads(row["parameters_json"])
+        return value if isinstance(value, dict) else {}
+
     def list(
         self,
         *,
