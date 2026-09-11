@@ -4,7 +4,8 @@ from datetime import datetime, timezone
 from fastapi.testclient import TestClient
 
 from zhihua_service.main import app, settings
-from zhihua_service.schemas import ArtifactManifest, ResultManifest
+from zhihua_service.schemas import ArtifactManifest, JobCreateRequest, JobStatus, ResultManifest
+from zhihua_service.services.comfyui import ComfyUICancelTarget
 from zhihua_service.services.jobs import JobStore
 
 TOKEN = "test-token-that-is-longer-than-32-characters"
@@ -80,6 +81,34 @@ def test_job_queue_is_persistent_idempotent_and_cancellable(tmp_path) -> None:
     reopened = JobStore(database_path)
     persisted = reopened.get(created.json()["id"])
     assert persisted.status.value == "cancelled"
+
+
+def test_running_job_is_interrupted_in_comfyui_before_being_cancelled(tmp_path) -> None:
+    class FakeComfyUI:
+        def __init__(self) -> None:
+            self.cancelled: list[str] = []
+
+        async def cancel_prompt(self, prompt_id: str) -> ComfyUICancelTarget:
+            self.cancelled.append(prompt_id)
+            return ComfyUICancelTarget.RUNNING
+
+    database_path = str(tmp_path / "jobs.sqlite3")
+    fake = FakeComfyUI()
+    with TestClient(app) as client:
+        client.app.state.settings = replace(settings, service_token=TOKEN)
+        store = JobStore(database_path)
+        client.app.state.jobs = store
+        client.app.state.comfyui = fake
+        created, _ = store.create(JobCreateRequest(**_payload("request-running-cancel")))
+        claimed = store.claim_next()
+        assert claimed is not None
+        store.mark_running(created.id, "prompt-running")
+
+        response = client.post(f"/api/v1/jobs/{created.id}/cancel", headers=HEADERS)
+
+        assert response.status_code == 200
+        assert response.json()["status"] == JobStatus.CANCELLED.value
+        assert fake.cancelled == ["prompt-running"]
 
 
 def test_idempotency_conflict_and_workflow_allowlist(tmp_path) -> None:

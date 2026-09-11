@@ -1,5 +1,6 @@
 import asyncio
 from dataclasses import dataclass
+from enum import Enum
 from typing import Any
 
 import httpx
@@ -17,6 +18,12 @@ class ComfyUIUnavailableError(ComfyUIError):
 
 class ComfyUIPromptRejectedError(ComfyUIError):
     code = "comfyui_prompt_rejected"
+
+
+class ComfyUICancelTarget(str, Enum):
+    RUNNING = "running"
+    PENDING = "pending"
+    NOT_FOUND = "not_found"
 
 
 @dataclass(frozen=True, slots=True)
@@ -146,6 +153,41 @@ class ComfyUIClient:
         outputs = self._parse_outputs(entry.get("outputs"))
         return ComfyUIHistory(state="completed", outputs=tuple(outputs))
 
+    async def cancel_prompt(self, prompt_id: str) -> ComfyUICancelTarget:
+        """Remove a queued prompt or interrupt the active ComfyUI execution."""
+        try:
+            response = await self._client.get(f"{self._base_url}/queue")
+        except (httpx.ConnectError, httpx.TimeoutException) as exc:
+            raise ComfyUIUnavailableError(type(exc).__name__) from exc
+        if response.status_code >= 500:
+            raise ComfyUIUnavailableError(f"HTTP {response.status_code}")
+        if response.status_code >= 400:
+            raise ComfyUIError(f"queue returned HTTP {response.status_code}")
+        try:
+            payload = response.json()
+        except ValueError as exc:
+            raise ComfyUIError("queue returned invalid JSON") from exc
+        if not isinstance(payload, dict):
+            raise ComfyUIError("queue response must be an object")
+
+        if prompt_id in self._queue_prompt_ids(payload.get("queue_pending")):
+            await self._post_control("/queue", {"delete": [prompt_id]})
+            return ComfyUICancelTarget.PENDING
+        if prompt_id in self._queue_prompt_ids(payload.get("queue_running")):
+            await self._post_control("/interrupt")
+            return ComfyUICancelTarget.RUNNING
+        return ComfyUICancelTarget.NOT_FOUND
+
+    async def _post_control(self, path: str, payload: dict[str, Any] | None = None) -> None:
+        try:
+            response = await self._client.post(f"{self._base_url}{path}", json=payload)
+        except (httpx.ConnectError, httpx.TimeoutException) as exc:
+            raise ComfyUIUnavailableError(type(exc).__name__) from exc
+        if response.status_code >= 500:
+            raise ComfyUIUnavailableError(f"HTTP {response.status_code}")
+        if response.status_code >= 400:
+            raise ComfyUIError(f"control request returned HTTP {response.status_code}")
+
     @staticmethod
     def _parse_outputs(value: Any) -> list[ComfyUIOutput]:
         if not isinstance(value, dict):
@@ -206,3 +248,16 @@ class ComfyUIClient:
     @staticmethod
     def _queue_size(value: Any) -> int | None:
         return len(value) if isinstance(value, list) else None
+
+    @staticmethod
+    def _queue_prompt_ids(value: Any) -> set[str]:
+        if not isinstance(value, list):
+            return set()
+        return {
+            entry[1]
+            for entry in value
+            if isinstance(entry, list)
+            and len(entry) > 1
+            and isinstance(entry[1], str)
+            and entry[1]
+        }

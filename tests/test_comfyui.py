@@ -2,7 +2,7 @@ import asyncio
 
 import httpx
 
-from zhihua_service.services.comfyui import ComfyUIClient
+from zhihua_service.services.comfyui import ComfyUICancelTarget, ComfyUIClient
 
 
 def test_comfyui_status_reports_queue_sizes() -> None:
@@ -65,5 +65,75 @@ def test_find_node_types_returns_none_when_comfyui_is_offline() -> None:
             )
 
         assert installed is None
+
+    asyncio.run(run())
+
+
+def test_cancel_prompt_deletes_pending_prompt() -> None:
+    async def run() -> None:
+        requests: list[tuple[str, object]] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            payload = request.read().decode() if request.method == "POST" else ""
+            requests.append((f"{request.method} {request.url.path}", payload))
+            if request.method == "GET":
+                return httpx.Response(
+                    200,
+                    json={"queue_running": [], "queue_pending": [[7, "prompt-pending", {}]]},
+                )
+            return httpx.Response(200, json={})
+
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http_client:
+            result = await ComfyUIClient(http_client, "http://comfy.test").cancel_prompt(
+                "prompt-pending"
+            )
+
+        assert result == ComfyUICancelTarget.PENDING
+        assert requests[1][0] == "POST /queue"
+        assert '"delete":["prompt-pending"]' in str(requests[1][1]).replace(" ", "")
+
+    asyncio.run(run())
+
+
+def test_cancel_prompt_interrupts_running_prompt() -> None:
+    async def run() -> None:
+        paths: list[str] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            paths.append(f"{request.method} {request.url.path}")
+            if request.method == "GET":
+                return httpx.Response(
+                    200,
+                    json={"queue_running": [[9, "prompt-running", {}]], "queue_pending": []},
+                )
+            return httpx.Response(200, json={})
+
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http_client:
+            result = await ComfyUIClient(http_client, "http://comfy.test").cancel_prompt(
+                "prompt-running"
+            )
+
+        assert result == ComfyUICancelTarget.RUNNING
+        assert paths == ["GET /queue", "POST /interrupt"]
+
+    asyncio.run(run())
+
+
+def test_cancel_prompt_does_not_interrupt_an_unrelated_job() -> None:
+    async def run() -> None:
+        paths: list[str] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            paths.append(f"{request.method} {request.url.path}")
+            return httpx.Response(
+                200,
+                json={"queue_running": [[3, "someone-else", {}]], "queue_pending": []},
+            )
+
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http_client:
+            result = await ComfyUIClient(http_client, "http://comfy.test").cancel_prompt("missing")
+
+        assert result == ComfyUICancelTarget.NOT_FOUND
+        assert paths == ["GET /queue"]
 
     asyncio.run(run())

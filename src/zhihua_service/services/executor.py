@@ -74,6 +74,14 @@ class JobProcessor:
         except ComfyUIError as exc:
             self._jobs.defer(job.id, exc.code, str(exc))
         else:
+            current = self._jobs.get(job.id)
+            if current.status == JobStatus.CANCELLED:
+                try:
+                    await self._comfyui.cancel_prompt(prompt_id)
+                except ComfyUIError:
+                    logger.exception("failed to stop prompt for cancelled job %s", job.id)
+                self.cleanup_inputs(job.id)
+                return
             self._jobs.mark_running(job.id, prompt_id)
 
     async def _poll(self, job_id: str, prompt_id: str | None) -> None:
@@ -88,6 +96,9 @@ class JobProcessor:
             return
         except ComfyUIError as exc:
             self._jobs.fail(job_id, exc.code, str(exc))
+            return
+
+        if self._jobs.get(job_id).status != JobStatus.RUNNING:
             return
 
         if history.state == "pending":
@@ -142,6 +153,12 @@ class JobProcessor:
                 continue
             with suppress(OSError):
                 candidate.unlink()
+
+    def cleanup_inputs(self, job_id: str) -> None:
+        self._cleanup_input_files(self._jobs.parameters(job_id))
+
+    def cleanup_input_parameters(self, parameters: dict[str, object]) -> None:
+        self._cleanup_input_files(parameters)
 
     def _artifact(
         self,

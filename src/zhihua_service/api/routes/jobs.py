@@ -16,6 +16,11 @@ from zhihua_service.schemas import (
     ResultManifest,
 )
 from zhihua_service.security import require_protocol_headers
+from zhihua_service.services.comfyui import (
+    ComfyUICancelTarget,
+    ComfyUIError,
+    ComfyUIUnavailableError,
+)
 from zhihua_service.services.jobs import (
     JobConflictError,
     JobNotFoundError,
@@ -98,15 +103,48 @@ async def get_job(request: Request, job_id: str) -> JobResponse:
 
 @router.post("/{job_id}/cancel", response_model=JobCancelResponse)
 async def cancel_job(request: Request, job_id: str) -> JobCancelResponse:
+    store = _store(request)
     try:
-        job = await run_in_threadpool(_store(request).cancel, job_id)
+        current = await run_in_threadpool(store.get, job_id)
+        parameters = await run_in_threadpool(store.parameters, job_id)
     except JobNotFoundError as exc:
         raise _not_found(job_id) from exc
+
+    if current.status == JobStatus.RUNNING:
+        if not current.prompt_id:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={"code": "cancel_target_unavailable"},
+            )
+        try:
+            target = await request.app.state.comfyui.cancel_prompt(current.prompt_id)
+        except ComfyUIUnavailableError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail={"code": exc.code, "message": str(exc)},
+            ) from exc
+        except ComfyUIError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail={"code": exc.code, "message": str(exc)},
+            ) from exc
+        if target == ComfyUICancelTarget.NOT_FOUND:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={"code": "cancel_target_not_found"},
+            )
+
+    try:
+        job = await run_in_threadpool(store.cancel, job_id)
     except JobConflictError as exc:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail={"code": "job_not_cancellable"},
         ) from exc
+    await run_in_threadpool(
+        request.app.state.job_processor.cleanup_input_parameters,
+        parameters,
+    )
     return JobCancelResponse(id=job.id, status=job.status)
 
 
