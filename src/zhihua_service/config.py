@@ -94,7 +94,7 @@ def get_settings() -> Settings:
         service_token=os.getenv("ZHIHUA_SERVICE_TOKEN", ""),
         jobs_database_path=os.getenv(
             "ZHIHUA_JOBS_DATABASE_PATH",
-            "/root/.local/share/zhihua-service/jobs.sqlite3",
+            "/root/zhihua-service-data/jobs.sqlite3",
         ),
         minimum_client_version=os.getenv(
             "ZHIHUA_MINIMUM_CLIENT_VERSION",
