@@ -14,6 +14,9 @@ DEFAULT_WORKFLOWS = (
     "seedvr2-1080p-v1",
 )
 
+WORKFLOW_MANIFEST_VERSION = "h3-workflows-2026.09.11"
+MODEL_MANIFEST_VERSION = "public-models-2026.09.08"
+
 
 @dataclass(frozen=True, slots=True)
 class Settings:
@@ -97,13 +100,7 @@ def get_settings() -> Settings:
             "ZHIHUA_MINIMUM_CLIENT_VERSION",
             "0.1.0",
         ),
-        workflow_manifest_version=os.getenv(
-            "ZHIHUA_WORKFLOW_MANIFEST_VERSION",
-            "h3-workflows-2026.09.11",
-        ),
-        model_manifest_version=os.getenv(
-            "ZHIHUA_MODEL_MANIFEST_VERSION",
-            "public-models-2026.09.08",
-        ),
+        workflow_manifest_version=WORKFLOW_MANIFEST_VERSION,
+        model_manifest_version=MODEL_MANIFEST_VERSION,
         allowed_workflows=workflows,
     )
