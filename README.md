@@ -39,7 +39,7 @@ cd /root/zhihua-service
 bash deploy/install-comfyui-runtime.sh
 ```
 
-脚本只为 3B FP8 DiT 和 VAE 创建指向只读 `/model` 公共模型库的符号链接，不复制或重新下载模型权重。节点提交版本和公共模型路径记录在 `deploy/comfyui-runtime.lock`。脚本完成后重启 ComfyUI。
+脚本为 SeedVR2 3B FP8、VAE、Qwen Image/Edit 和 H3 Turbo LoRA 创建指向只读 `/model` 公共模型库的符号链接，不复制或重新下载模型权重。它还会探测镜像中 xformers 与 Diffusers/PyTorch 的实际 ABI 兼容性，只在不兼容时卸载 xformers。节点提交版本和公共模型路径记录在 `deploy/comfyui-runtime.lock`。脚本完成后重启 ComfyUI。
 
 启动开发服务：
 
