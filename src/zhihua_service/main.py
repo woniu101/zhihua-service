@@ -44,6 +44,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         yield
     finally:
         await stop_job_worker(worker)
+        await processor.close()
         await http_client.aclose()
 
 

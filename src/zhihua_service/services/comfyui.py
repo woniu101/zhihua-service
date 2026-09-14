@@ -1,9 +1,13 @@
 import asyncio
+import json
+from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any
+from urllib.parse import quote, urlsplit, urlunsplit
 
 import httpx
+import websockets
 
 from zhihua_service.schemas import ComfyUIStatusResponse
 
@@ -39,6 +43,14 @@ class ComfyUIHistory:
     state: str
     outputs: tuple[ComfyUIOutput, ...] = ()
     detail: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ComfyUIProgressEvent:
+    prompt_id: str
+    current: int
+    total: int
+    node_id: str | None = None
 
 
 class ComfyUIClient:
@@ -153,6 +165,31 @@ class ComfyUIClient:
         outputs = self._parse_outputs(entry.get("outputs"))
         return ComfyUIHistory(state="completed", outputs=tuple(outputs))
 
+    async def stream_progress(
+        self,
+        *,
+        client_id: str,
+        prompt_id: str,
+    ) -> AsyncIterator[ComfyUIProgressEvent]:
+        """Yield measured ComfyUI sampler progress for a submitted prompt."""
+        websocket_url = self._websocket_url(client_id)
+        try:
+            async with websockets.connect(
+                websocket_url,
+                open_timeout=10,
+                ping_interval=20,
+                ping_timeout=20,
+                max_size=2 * 1024 * 1024,
+            ) as socket:
+                async for message in socket:
+                    event = self.parse_progress_message(message)
+                    if event is not None and event.prompt_id == prompt_id:
+                        yield event
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            raise ComfyUIUnavailableError(type(exc).__name__) from exc
+
     async def cancel_prompt(self, prompt_id: str) -> ComfyUICancelTarget:
         """Remove a queued prompt or interrupt the active ComfyUI execution."""
         try:
@@ -248,6 +285,50 @@ class ComfyUIClient:
     @staticmethod
     def _queue_size(value: Any) -> int | None:
         return len(value) if isinstance(value, list) else None
+
+    def _websocket_url(self, client_id: str) -> str:
+        parts = urlsplit(self._base_url)
+        scheme = "wss" if parts.scheme == "https" else "ws"
+        query = f"clientId={quote(client_id, safe='')}"
+        return urlunsplit((scheme, parts.netloc, f"{parts.path.rstrip('/')}/ws", query, ""))
+
+    @staticmethod
+    def parse_progress_message(message: str | bytes) -> ComfyUIProgressEvent | None:
+        if isinstance(message, bytes):
+            try:
+                message = message.decode("utf-8")
+            except UnicodeDecodeError:
+                return None
+        try:
+            payload = json.loads(message)
+        except (TypeError, json.JSONDecodeError):
+            return None
+        if not isinstance(payload, dict) or payload.get("type") != "progress":
+            return None
+        data = payload.get("data")
+        if not isinstance(data, dict):
+            return None
+        prompt_id = data.get("prompt_id")
+        current = data.get("value")
+        total = data.get("max")
+        if (
+            not isinstance(prompt_id, str)
+            or not prompt_id
+            or not isinstance(current, int)
+            or isinstance(current, bool)
+            or not isinstance(total, int)
+            or isinstance(total, bool)
+            or current < 0
+            or total <= 0
+        ):
+            return None
+        node_id = data.get("node")
+        return ComfyUIProgressEvent(
+            prompt_id=prompt_id,
+            current=min(current, total),
+            total=total,
+            node_id=str(node_id) if node_id is not None else None,
+        )
 
     @staticmethod
     def _queue_prompt_ids(value: Any) -> set[str]:

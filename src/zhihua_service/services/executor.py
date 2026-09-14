@@ -42,6 +42,7 @@ class JobProcessor:
         self._input_directory = Path(input_directory).resolve() if input_directory else None
         self._retry_delay_seconds = retry_delay_seconds
         self._deferred_until = 0.0
+        self._progress_tasks: dict[str, asyncio.Task[None]] = {}
 
     async def tick(self) -> None:
         loop = asyncio.get_running_loop()
@@ -50,6 +51,7 @@ class JobProcessor:
 
         running, _ = self._jobs.list(status=JobStatus.RUNNING, limit=1)
         if running:
+            self._ensure_progress_watcher(running[0].id, running[0].prompt_id)
             await self._poll(running[0].id, running[0].prompt_id)
             return
 
@@ -83,6 +85,7 @@ class JobProcessor:
                 self.cleanup_inputs(job.id)
                 return
             self._jobs.mark_running(job.id, prompt_id)
+            self._ensure_progress_watcher(job.id, prompt_id)
 
     async def _poll(self, job_id: str, prompt_id: str | None) -> None:
         if not prompt_id:
@@ -102,9 +105,12 @@ class JobProcessor:
             return
 
         if history.state == "pending":
-            self._jobs.update_progress(job_id, 0.15)
+            current = self._jobs.get(job_id)
+            if not current.progress_measured:
+                self._jobs.mark_waiting(job_id, "ComfyUI is loading models or preparing generation")
             return
         if history.state == "failed":
+            await self._stop_progress_watcher(job_id)
             self._jobs.fail(
                 job_id,
                 "comfyui_execution_failed",
@@ -113,6 +119,8 @@ class JobProcessor:
             self._cleanup_input_files(self._jobs.parameters(job_id))
             return
 
+        await self._stop_progress_watcher(job_id)
+        self._jobs.mark_finalizing(job_id)
         job = self._jobs.get(job_id)
         resolved_artifacts = [
             artifact
@@ -132,6 +140,64 @@ class JobProcessor:
         )
         self._jobs.complete(job_id, manifest)
         self._cleanup_input_files(self._jobs.parameters(job_id))
+
+    def _ensure_progress_watcher(self, job_id: str, prompt_id: str | None) -> None:
+        if not prompt_id:
+            return
+        existing = self._progress_tasks.get(job_id)
+        if existing is not None and not existing.done():
+            return
+        task = asyncio.create_task(
+            self._watch_progress(job_id, prompt_id),
+            name=f"zhihua-progress-{job_id}",
+        )
+        self._progress_tasks[job_id] = task
+
+    async def _watch_progress(self, job_id: str, prompt_id: str) -> None:
+        started_at = asyncio.get_running_loop().time()
+        try:
+            async for event in self._comfyui.stream_progress(
+                client_id=job_id,
+                prompt_id=prompt_id,
+            ):
+                if self._jobs.get(job_id).status != JobStatus.RUNNING:
+                    return
+                elapsed = max(0.0, asyncio.get_running_loop().time() - started_at)
+                eta_seconds = None
+                if event.current > 0:
+                    eta_seconds = round(elapsed * (event.total - event.current) / event.current)
+                detail = "ComfyUI is generating"
+                if event.node_id:
+                    detail = f"ComfyUI is generating node {event.node_id}"
+                self._jobs.update_progress(
+                    job_id,
+                    current=event.current,
+                    total=event.total,
+                    eta_seconds=eta_seconds,
+                    detail=detail,
+                )
+        except asyncio.CancelledError:
+            raise
+        except ComfyUIError:
+            # History polling remains authoritative if the optional live stream disconnects.
+            logger.info("progress stream disconnected for job %s", job_id)
+
+    async def _stop_progress_watcher(self, job_id: str) -> None:
+        task = self._progress_tasks.pop(job_id, None)
+        if task is None or task.done():
+            return
+        task.cancel()
+        with suppress(asyncio.CancelledError):
+            await task
+
+    async def close(self) -> None:
+        tasks = list(self._progress_tasks.values())
+        self._progress_tasks.clear()
+        for task in tasks:
+            task.cancel()
+        for task in tasks:
+            with suppress(asyncio.CancelledError):
+                await task
 
     def _cleanup_input_files(self, parameters: dict[str, object]) -> None:
         root = self._input_directory

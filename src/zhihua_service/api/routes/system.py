@@ -25,6 +25,7 @@ FEATURES = [
     "persistent_job_queue",
     "comfyui_job_executor",
     "job_status",
+    "measured_job_progress",
     "job_cancellation",
     "result_manifest_v1",
     "authenticated_input_upload",

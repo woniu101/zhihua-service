@@ -4,7 +4,13 @@ from datetime import datetime, timezone
 from fastapi.testclient import TestClient
 
 from zhihua_service.main import app, settings
-from zhihua_service.schemas import ArtifactManifest, JobCreateRequest, JobStatus, ResultManifest
+from zhihua_service.schemas import (
+    ArtifactManifest,
+    JobCreateRequest,
+    JobProgressStage,
+    JobStatus,
+    ResultManifest,
+)
 from zhihua_service.services.comfyui import ComfyUICancelTarget
 from zhihua_service.services.jobs import JobStore
 
@@ -109,6 +115,27 @@ def test_running_job_is_interrupted_in_comfyui_before_being_cancelled(tmp_path) 
         assert response.status_code == 200
         assert response.json()["status"] == JobStatus.CANCELLED.value
         assert fake.cancelled == ["prompt-running"]
+
+
+def test_job_store_persists_measured_sampler_progress(tmp_path) -> None:
+    store = JobStore(str(tmp_path / "jobs.sqlite3"))
+    created, _ = store.create(JobCreateRequest(**_payload("request-progress")))
+    assert store.claim_next() is not None
+    store.mark_running(created.id, "prompt-progress")
+
+    progress = store.update_progress(
+        created.id,
+        current=7,
+        total=20,
+        eta_seconds=42,
+    )
+
+    assert progress.progress == 0.35
+    assert progress.progress_stage is JobProgressStage.MODEL_INFERENCE
+    assert progress.progress_measured is True
+    assert progress.progress_current == 7
+    assert progress.progress_total == 20
+    assert progress.eta_seconds == 42
 
 
 def test_idempotency_conflict_and_workflow_allowlist(tmp_path) -> None:

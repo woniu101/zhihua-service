@@ -10,6 +10,7 @@ from typing import Any
 
 from zhihua_service.schemas import (
     JobCreateRequest,
+    JobProgressStage,
     JobResponse,
     JobStatus,
     QueueStatusResponse,
@@ -62,6 +63,11 @@ class JobStore:
                         status TEXT NOT NULL,
                         prompt_id TEXT,
                         progress REAL NOT NULL DEFAULT 0,
+                        progress_stage TEXT NOT NULL DEFAULT 'queued',
+                        progress_measured INTEGER NOT NULL DEFAULT 0,
+                        progress_current INTEGER,
+                        progress_total INTEGER,
+                        eta_seconds INTEGER,
                         error_code TEXT,
                         error_message TEXT,
                         status_detail TEXT,
@@ -86,6 +92,35 @@ class JobStore:
                 }
                 if "status_detail" not in columns:
                     connection.execute("ALTER TABLE jobs ADD COLUMN status_detail TEXT")
+                migrations = {
+                    "progress_stage": "TEXT NOT NULL DEFAULT 'queued'",
+                    "progress_measured": "INTEGER NOT NULL DEFAULT 0",
+                    "progress_current": "INTEGER",
+                    "progress_total": "INTEGER",
+                    "eta_seconds": "INTEGER",
+                }
+                for column, definition in migrations.items():
+                    if column not in columns:
+                        connection.execute(
+                            f"ALTER TABLE jobs ADD COLUMN {column} {definition}"
+                        )
+                connection.execute(
+                    """
+                    UPDATE jobs SET progress_stage = CASE status
+                        WHEN 'completed' THEN 'completed'
+                        WHEN 'failed' THEN 'failed'
+                        WHEN 'cancelled' THEN 'cancelled'
+                        WHEN 'running' THEN
+                            CASE WHEN progress_measured = 1
+                                THEN 'model_inference' ELSE 'model_loading' END
+                        WHEN 'preparing' THEN 'preparing'
+                        ELSE 'queued'
+                    END
+                    WHERE progress_stage IS NULL
+                       OR progress_stage = ''
+                       OR (progress_stage = 'queued' AND status != 'queued')
+                    """
+                )
             self._initialized = True
 
     def create(self, request: JobCreateRequest) -> tuple[JobResponse, bool]:
@@ -214,13 +249,16 @@ class JobStore:
             changed = connection.execute(
                 """
                 UPDATE jobs
-                SET status = ?, progress = ?, status_detail = NULL,
+                SET status = ?, progress = ?, progress_stage = ?,
+                    progress_measured = 0, progress_current = NULL,
+                    progress_total = NULL, eta_seconds = NULL, status_detail = NULL,
                     error_code = NULL, error_message = NULL, updated_at = ?
                 WHERE id = ? AND status = ?
                 """,
                 (
                     JobStatus.PREPARING.value,
                     0.02,
+                    JobProgressStage.PREPARING.value,
                     now,
                     row["id"],
                     JobStatus.QUEUED.value,
@@ -241,16 +279,63 @@ class JobStore:
             job_id,
             status=JobStatus.RUNNING,
             progress=0.1,
+            progress_stage=JobProgressStage.MODEL_LOADING,
+            progress_measured=False,
+            progress_current=None,
+            progress_total=None,
+            eta_seconds=None,
             prompt_id=prompt_id,
             status_detail="ComfyUI accepted the prompt",
             clear_error=True,
         )
 
-    def update_progress(self, job_id: str, progress: float) -> JobResponse:
+    def update_progress(
+        self,
+        job_id: str,
+        *,
+        current: int,
+        total: int,
+        eta_seconds: int | None = None,
+        detail: str = "ComfyUI is generating",
+    ) -> JobResponse:
+        if total <= 0 or current < 0:
+            raise ValueError("progress values must be non-negative and total must be positive")
+        current = min(current, total)
         return self._update(
             job_id,
-            progress=max(0.0, min(progress, 0.99)),
-            status_detail="ComfyUI is executing the prompt",
+            progress=min(current / total, 0.99),
+            progress_stage=JobProgressStage.MODEL_INFERENCE,
+            progress_measured=True,
+            progress_current=current,
+            progress_total=total,
+            eta_seconds=max(0, eta_seconds) if eta_seconds is not None else None,
+            status_detail=detail,
+            clear_error=True,
+        )
+
+    def mark_waiting(self, job_id: str, detail: str) -> JobResponse:
+        return self._update(
+            job_id,
+            progress_stage=JobProgressStage.MODEL_LOADING,
+            progress_measured=False,
+            progress_current=None,
+            progress_total=None,
+            eta_seconds=None,
+            status_detail=detail,
+            clear_error=True,
+        )
+
+    def mark_finalizing(self, job_id: str) -> JobResponse:
+        return self._update(
+            job_id,
+            progress=0.99,
+            progress_stage=JobProgressStage.FINALIZING,
+            progress_measured=False,
+            progress_current=None,
+            progress_total=None,
+            eta_seconds=None,
+            status_detail="Preparing result files",
+            clear_error=True,
         )
 
     def annotate(self, job_id: str, code: str, detail: str) -> JobResponse:
@@ -266,6 +351,11 @@ class JobStore:
             job_id,
             status=JobStatus.QUEUED,
             progress=0.0,
+            progress_stage=JobProgressStage.QUEUED,
+            progress_measured=False,
+            progress_current=None,
+            progress_total=None,
+            eta_seconds=None,
             prompt_id=None,
             status_detail=detail,
             error_code=code,
@@ -276,6 +366,9 @@ class JobStore:
         return self._update(
             job_id,
             status=JobStatus.FAILED,
+            progress_stage=JobProgressStage.FAILED,
+            progress_measured=False,
+            eta_seconds=None,
             status_detail=detail,
             error_code=code,
             error_message=detail,
@@ -288,12 +381,15 @@ class JobStore:
             changed = connection.execute(
                 """
                 UPDATE jobs
-                SET status = ?, progress = 0,
+                SET status = ?, progress = 0, progress_stage = ?,
+                    progress_measured = 0, progress_current = NULL,
+                    progress_total = NULL, eta_seconds = NULL,
                     status_detail = ?, updated_at = ?
                 WHERE status = ? AND prompt_id IS NULL
                 """,
                 (
                     JobStatus.QUEUED.value,
+                    JobProgressStage.QUEUED.value,
                     "Recovered after service restart",
                     now,
                     JobStatus.PREPARING.value,
@@ -340,6 +436,9 @@ class JobStore:
         return self._update(
             job_id,
             status=JobStatus.CANCELLED,
+            progress_stage=JobProgressStage.CANCELLED,
+            progress_measured=False,
+            eta_seconds=None,
             status_detail="Cancelled by client",
         )
 
@@ -353,6 +452,8 @@ class JobStore:
                 """
                 UPDATE jobs
                 SET status = ?, progress = 1, prompt_id = ?,
+                    progress_stage = ?, progress_measured = 1,
+                    progress_current = 1, progress_total = 1, eta_seconds = 0,
                     status_detail = ?, error_code = NULL, error_message = NULL,
                     result_manifest_json = ?, updated_at = ?
                 WHERE id = ?
@@ -360,6 +461,7 @@ class JobStore:
                 (
                     JobStatus.COMPLETED.value,
                     manifest.prompt_id,
+                    JobProgressStage.COMPLETED.value,
                     "ComfyUI execution completed",
                     manifest.model_dump_json(),
                     now,
@@ -406,6 +508,11 @@ class JobStore:
         *,
         status: JobStatus | None = None,
         progress: float | None = None,
+        progress_stage: JobProgressStage | None = None,
+        progress_measured: bool | None = None,
+        progress_current: int | None | object = ...,
+        progress_total: int | None | object = ...,
+        eta_seconds: int | None | object = ...,
         prompt_id: str | None | object = ...,
         status_detail: str | None | object = ...,
         error_code: str | None | object = ...,
@@ -418,6 +525,11 @@ class JobStore:
         for column, value in (
             ("status", status.value if status else None),
             ("progress", progress),
+            ("progress_stage", progress_stage.value if progress_stage else None),
+            (
+                "progress_measured",
+                int(progress_measured) if progress_measured is not None else None,
+            ),
         ):
             if value is not None:
                 assignments.append(f"{column} = ?")
@@ -425,6 +537,9 @@ class JobStore:
         for column, value in (
             ("prompt_id", prompt_id),
             ("status_detail", status_detail),
+            ("progress_current", progress_current),
+            ("progress_total", progress_total),
+            ("eta_seconds", eta_seconds),
             ("error_code", error_code),
             ("error_message", error_message),
         ):
@@ -458,6 +573,11 @@ class JobStore:
             status=row["status"],
             prompt_id=row["prompt_id"],
             progress=row["progress"],
+            progress_stage=row["progress_stage"],
+            progress_measured=bool(row["progress_measured"]),
+            progress_current=row["progress_current"],
+            progress_total=row["progress_total"],
+            eta_seconds=row["eta_seconds"],
             error_code=row["error_code"],
             error_message=row["error_message"],
             status_detail=row["status_detail"],

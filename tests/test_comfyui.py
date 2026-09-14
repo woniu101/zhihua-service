@@ -38,6 +38,22 @@ def test_comfyui_status_handles_connection_failure() -> None:
     asyncio.run(run())
 
 
+def test_parse_progress_message_accepts_only_measured_prompt_events() -> None:
+    event = ComfyUIClient.parse_progress_message(
+        '{"type":"progress","data":{"prompt_id":"prompt-1","value":7,"max":20,"node":"42"}}'
+    )
+    assert event is not None
+    assert event.prompt_id == "prompt-1"
+    assert event.current == 7
+    assert event.total == 20
+    assert event.node_id == "42"
+
+    assert ComfyUIClient.parse_progress_message('{"type":"executing","data":{}}') is None
+    assert ComfyUIClient.parse_progress_message(
+        '{"type":"progress","data":{"prompt_id":"prompt-1","value":1,"max":0}}'
+    ) is None
+
+
 def test_find_node_types_reports_installed_and_missing_nodes() -> None:
     async def run() -> None:
         def handler(request: httpx.Request) -> httpx.Response:

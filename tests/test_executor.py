@@ -5,7 +5,7 @@ import json
 import httpx
 import pytest
 
-from zhihua_service.schemas import JobCreateRequest, JobKind, JobStatus
+from zhihua_service.schemas import JobCreateRequest, JobKind, JobProgressStage, JobStatus
 from zhihua_service.services.comfyui import ComfyUIClient
 from zhihua_service.services.executor import JobProcessor
 from zhihua_service.services.jobs import JobStore
@@ -110,6 +110,8 @@ def test_processor_submits_polls_and_persists_result_manifest(tmp_path) -> None:
             running = store.get(created.id)
             assert running.status is JobStatus.RUNNING
             assert running.progress == 0.1
+            assert running.progress_stage is JobProgressStage.MODEL_LOADING
+            assert running.progress_measured is False
             assert running.prompt_id == "prompt-123"
 
             await processor.tick()
@@ -117,6 +119,8 @@ def test_processor_submits_polls_and_persists_result_manifest(tmp_path) -> None:
         completed = store.get(created.id)
         assert completed.status is JobStatus.COMPLETED
         assert completed.progress == 1
+        assert completed.progress_stage is JobProgressStage.COMPLETED
+        assert completed.progress_measured is True
         assert completed.result_manifest is not None
         assert completed.result_manifest.prompt_id == "prompt-123"
         assert len(completed.result_manifest.artifacts) == 1

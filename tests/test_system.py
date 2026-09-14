@@ -12,7 +12,7 @@ def test_health() -> None:
     assert response.json() == {
         "status": "ok",
         "service": "zhihua-service",
-        "version": "0.4.0",
+        "version": "0.5.0",
     }
 
 
@@ -40,7 +40,7 @@ def test_version_contract() -> None:
 
     assert response.status_code == 200
     assert response.json() == {
-        "service_version": "0.4.0",
+        "service_version": "0.5.0",
         "api_version": "v1",
         "minimum_client_version": "0.1.0",
         "workflow_manifest_version": "zhihua-workflows-2026.09.11-r2",
@@ -63,6 +63,7 @@ def test_capabilities_describe_secure_job_contract() -> None:
         "persistent_job_queue",
         "comfyui_job_executor",
         "job_status",
+        "measured_job_progress",
         "job_cancellation",
         "result_manifest_v1",
         "authenticated_input_upload",

@@ -104,6 +104,17 @@ class JobStatus(str, Enum):
     INTERRUPTED = "interrupted"
 
 
+class JobProgressStage(str, Enum):
+    QUEUED = "queued"
+    PREPARING = "preparing"
+    MODEL_LOADING = "model_loading"
+    MODEL_INFERENCE = "model_inference"
+    FINALIZING = "finalizing"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
 class JobCreateRequest(StrictModel):
     client_request_id: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
     project_id: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
@@ -157,6 +168,11 @@ class JobResponse(StrictModel):
     status: JobStatus
     prompt_id: str | None = None
     progress: float = Field(ge=0, le=1)
+    progress_stage: JobProgressStage = JobProgressStage.QUEUED
+    progress_measured: bool = False
+    progress_current: int | None = Field(default=None, ge=0)
+    progress_total: int | None = Field(default=None, ge=1)
+    eta_seconds: int | None = Field(default=None, ge=0)
     error_code: str | None = None
     error_message: str | None = None
     status_detail: str | None = None
