@@ -15,6 +15,7 @@ DEFAULT_WORKFLOWS = (
     "h3-ref2va-high-v1",
     "seedvr2-1080p-v1",
 )
+VOICE_WORKFLOWS = ("indextts-2.5-v1",)
 
 WORKFLOW_MANIFEST_VERSION = "zhihua-workflows-2026.09.11-r2"
 MODEL_MANIFEST_VERSION = "public-models-2026.09.08"
@@ -41,6 +42,9 @@ class Settings:
     workflow_manifest_version: str
     model_manifest_version: str
     allowed_workflows: tuple[str, ...]
+    indextts_root: str
+    indextts_python: str
+    indextts_model_path: str
 
     @property
     def authentication_configured(self) -> bool:
@@ -53,7 +57,7 @@ def get_settings() -> Settings:
         item.strip()
         for item in os.getenv(
             "ZHIHUA_ALLOWED_WORKFLOWS",
-            ",".join(DEFAULT_WORKFLOWS),
+            ",".join((*DEFAULT_WORKFLOWS, *VOICE_WORKFLOWS)),
         ).split(",")
         if item.strip()
     )
@@ -105,4 +109,13 @@ def get_settings() -> Settings:
         workflow_manifest_version=WORKFLOW_MANIFEST_VERSION,
         model_manifest_version=MODEL_MANIFEST_VERSION,
         allowed_workflows=workflows,
+        indextts_root=os.getenv("ZHIHUA_INDEXTTS_ROOT", "/root/index-tts"),
+        indextts_python=os.getenv(
+            "ZHIHUA_INDEXTTS_PYTHON",
+            "/root/index-tts/.venv/bin/python",
+        ),
+        indextts_model_path=os.getenv(
+            "ZHIHUA_INDEXTTS_MODEL_PATH",
+            "/root/index-tts/checkpoints",
+        ),
     )

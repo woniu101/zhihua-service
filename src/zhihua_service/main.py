@@ -11,6 +11,7 @@ from zhihua_service.config import get_settings
 from zhihua_service.services.comfyui import ComfyUIClient
 from zhihua_service.services.executor import JobProcessor, run_job_worker, stop_job_worker
 from zhihua_service.services.jobs import JobStore
+from zhihua_service.services.voice import IndexTtsExecutor
 from zhihua_service.services.workflows import WorkflowRegistry
 
 settings = get_settings()
@@ -23,12 +24,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     jobs = JobStore(settings.jobs_database_path)
     jobs.recover_incomplete()
     workflows = WorkflowRegistry(settings.workflow_directory)
+    voice_executor = IndexTtsExecutor(settings)
     processor = JobProcessor(
         jobs,
         comfyui,
         workflows,
         output_directory=settings.comfyui_output_path,
         input_directory=settings.comfyui_input_path,
+        voice_executor=voice_executor,
         retry_delay_seconds=settings.worker_retry_delay_seconds,
     )
     worker = asyncio.create_task(
@@ -40,6 +43,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.jobs = jobs
     app.state.workflows = workflows
     app.state.job_processor = processor
+    app.state.voice_executor = voice_executor
     try:
         yield
     finally:

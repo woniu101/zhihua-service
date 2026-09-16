@@ -88,6 +88,7 @@ class JobKind(str, Enum):
     VIDEO_CANDIDATE = "video_candidate"
     VIDEO_REFERENCE_REMAKE = "video_reference_remake"
     VIDEO_UPSCALE = "video_upscale"
+    VOICE_CLONE = "voice_clone"
 
 
 class JobStatus(str, Enum):

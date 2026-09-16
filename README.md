@@ -2,19 +2,22 @@
 
 知画部署在用户自有优云智算实例上的远端配套服务。它向知画桌面端提供稳定、版本化的 API，并通过本机 HTTP/WebSocket 连接 ComfyUI。
 
+桌面作品流程已经接入画面生成、候选/增强和云端旁白任务。实现状态与仍需真实 GPU 验收的边界见 [重构服务约定](docs/refactor-contract.md)。
+
 ## 当前功能
 
 - 服务健康、版本和能力查询
 - Python、Torch、CUDA 和 ComfyUI 目录状态检查
 - ComfyUI 连接与队列状态检查
 - 按受信任 workflow_id 加载 API-format 工作流并推进 SQLite 任务队列
+- 使用独立 IndexTTS 2.5 Python 运行时执行 `voice_clone`，不污染 ComfyUI 环境
 - 提交 /prompt、轮询 /history，记录进度、错误与结果清单
 - 经鉴权上传参考图片/视频，并按结果清单下载成品（支持 Range 续传）
 - 内置 9 个由实测流程固化的 H3/SeedVR2 API 工作流模板
 - 在无卡环境中正常运行服务与离线测试
 - OpenAPI 文档与模拟测试
 
-服务不会导入或修改 ComfyUI 内部模块。两者作为独立进程运行，知画服务使用独立的 Python 虚拟环境，避免改变官方 ComfyUI 镜像的依赖。
+服务不会导入或修改 ComfyUI 内部模块。ComfyUI、知画服务和 IndexTTS 2.5 使用彼此独立的 Python 环境，避免图像、视频和声音依赖互相污染。
 
 ## 优云智算开发环境
 
@@ -69,6 +72,8 @@ ssh -N -L 18000:127.0.0.1:8000 -p <port> root@<host>
 客户端随后访问 `http://127.0.0.1:18000`。不要将无鉴权的开发接口直接暴露到公网。
 
 日常 API、Git、测试和部署脚本在优云智算无卡模式运行。只有 ComfyUI 推理和 GPU 集成测试需要启动 5090。
+
+IndexTTS 2.5 通过 `ZHIHUA_INDEXTTS_ROOT`、`ZHIHUA_INDEXTTS_PYTHON` 和 `ZHIHUA_INDEXTTS_MODEL_PATH` 配置。代码目录、独立 Python 与检查点缺一时，`/capabilities` 不会把 `indextts-2.5-v1` 报告为可用。模型库和下载加速必须按实例地域确认，不能从其他地域的可见性推断当前地域可用。
 
 ## API
 

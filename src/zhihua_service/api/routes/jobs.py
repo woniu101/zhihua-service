@@ -9,6 +9,7 @@ from zhihua_service.config import Settings
 from zhihua_service.schemas import (
     JobCancelResponse,
     JobCreateRequest,
+    JobKind,
     JobListResponse,
     JobResponse,
     JobStatus,
@@ -59,6 +60,11 @@ async def create_job(
                 "code": "workflow_not_allowed",
                 "allowed_workflows": list(settings.allowed_workflows),
             },
+        )
+    if (payload.kind is JobKind.VOICE_CLONE) != (payload.workflow_id == "indextts-2.5-v1"):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={"code": "job_workflow_mismatch"},
         )
     try:
         job, created = await run_in_threadpool(_store(request).create, payload)
@@ -111,13 +117,15 @@ async def cancel_job(request: Request, job_id: str) -> JobCancelResponse:
         raise _not_found(job_id) from exc
 
     if current.status == JobStatus.RUNNING:
-        if not current.prompt_id:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail={"code": "cancel_target_unavailable"},
-            )
         try:
-            target = await request.app.state.comfyui.cancel_prompt(current.prompt_id)
+            if current.kind is JobKind.VOICE_CLONE:
+                cancelled = await request.app.state.job_processor.cancel_remote(current)
+            else:
+                if not current.prompt_id:
+                    cancelled = False
+                else:
+                    target = await request.app.state.comfyui.cancel_prompt(current.prompt_id)
+                    cancelled = target is not ComfyUICancelTarget.NOT_FOUND
         except ComfyUIUnavailableError as exc:
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -128,7 +136,7 @@ async def cancel_job(request: Request, job_id: str) -> JobCancelResponse:
                 status_code=status.HTTP_502_BAD_GATEWAY,
                 detail={"code": exc.code, "message": str(exc)},
             ) from exc
-        if target == ComfyUICancelTarget.NOT_FOUND:
+        if not cancelled:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail={"code": "cancel_target_not_found"},

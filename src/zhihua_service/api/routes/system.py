@@ -56,17 +56,27 @@ async def capabilities(request: Request) -> CapabilitiesResponse:
     settings: Settings = request.app.state.settings
     workflows: WorkflowRegistry = request.app.state.workflows
     comfyui: ComfyUIClient = request.app.state.comfyui
-    installed_node_types = await comfyui.find_node_types(
-        workflows.runtime_node_types(settings.allowed_workflows)
+    comfy_workflows = tuple(
+        item for item in settings.allowed_workflows if item != "indextts-2.5-v1"
     )
+    installed_node_types = await comfyui.find_node_types(
+        workflows.runtime_node_types(comfy_workflows)
+    )
+    available = workflows.available_workflows(
+        comfy_workflows,
+        installed_node_types,
+    )
+    voice = request.app.state.voice_executor
+    if "indextts-2.5-v1" in settings.allowed_workflows and voice.available:
+        available.append("indextts-2.5-v1")
     return CapabilitiesResponse(
         authentication_configured=settings.authentication_configured,
-        features=FEATURES,
+        features=[
+            *FEATURES,
+            *(["index_tts_2_5_voice_clone"] if voice.available else []),
+        ],
         workflows=list(settings.allowed_workflows),
-        available_workflows=workflows.available_workflows(
-            settings.allowed_workflows,
-            installed_node_types,
-        ),
+        available_workflows=available,
         job_kinds=[kind.value for kind in JobKind],
         job_statuses=[job_status.value for job_status in JobStatus],
     )

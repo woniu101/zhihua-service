@@ -274,7 +274,12 @@ class JobStore:
             parameters = json.loads(claimed["parameters_json"])
             return self._to_response(claimed), parameters
 
-    def mark_running(self, job_id: str, prompt_id: str) -> JobResponse:
+    def mark_running(
+        self,
+        job_id: str,
+        prompt_id: str,
+        detail: str = "ComfyUI accepted the prompt",
+    ) -> JobResponse:
         return self._update(
             job_id,
             status=JobStatus.RUNNING,
@@ -285,7 +290,7 @@ class JobStore:
             progress_total=None,
             eta_seconds=None,
             prompt_id=prompt_id,
-            status_detail="ComfyUI accepted the prompt",
+            status_detail=detail,
             clear_error=True,
         )
 
