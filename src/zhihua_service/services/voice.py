@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 import json
 import mimetypes
+import os
 from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
@@ -32,7 +33,9 @@ class IndexTtsExecutor:
 
     def __init__(self, settings: Settings) -> None:
         self._root = Path(settings.indextts_root).resolve()
-        self._python = Path(settings.indextts_python).resolve()
+        configured_python = Path(settings.indextts_python).expanduser()
+        self._python = configured_python.resolve()
+        self._python_environment_root = configured_python.parent.parent.resolve()
         self._models = Path(settings.indextts_model_path).resolve()
         self._input_root = Path(settings.comfyui_input_path).resolve()
         self._output_root = Path(settings.comfyui_output_path).resolve()
@@ -99,6 +102,15 @@ class IndexTtsExecutor:
             encoding="utf-8",
         )
         worker = Path(__file__).resolve().parents[1] / "index_tts_worker.py"
+        worker_environment = os.environ.copy()
+        local_site_packages = sorted(
+            (self._python_environment_root / "lib").glob("python*/site-packages")
+        )
+        if local_site_packages:
+            python_paths = [str(path) for path in local_site_packages]
+            if existing_python_path := worker_environment.get("PYTHONPATH"):
+                python_paths.append(existing_python_path)
+            worker_environment["PYTHONPATH"] = os.pathsep.join(python_paths)
         error_stream = error_path.open("wb")
         try:
             process = await asyncio.create_subprocess_exec(
@@ -107,6 +119,7 @@ class IndexTtsExecutor:
                 "--request",
                 str(request_path),
                 cwd=self._root,
+                env=worker_environment,
                 stdout=asyncio.subprocess.DEVNULL,
                 stderr=error_stream,
             )

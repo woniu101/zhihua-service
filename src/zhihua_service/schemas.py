@@ -206,3 +206,4 @@ class InputUploadResponse(StrictModel):
     media_type: str
     size_bytes: int
     sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
+    reused: bool = False

@@ -38,10 +38,15 @@ def test_index_tts_executor_builds_isolated_request_and_audio_manifest(
         inputs.mkdir()
         (models / "config.yaml").write_text("model: test")
         (inputs / "voice.wav").write_bytes(b"reference")
+        runtime_python = tmp_path / "index-env" / "bin" / "python"
+        runtime_python.parent.mkdir(parents=True)
+        runtime_python.write_bytes(b"python")
+        runtime_site_packages = tmp_path / "index-env" / "lib" / "python3.10" / "site-packages"
+        runtime_site_packages.mkdir(parents=True)
         settings = replace(
             get_settings(),
             indextts_root=str(root),
-            indextts_python=sys.executable,
+            indextts_python=str(runtime_python),
             indextts_model_path=str(models),
             comfyui_input_path=str(inputs),
             comfyui_output_path=str(outputs),
@@ -52,6 +57,7 @@ def test_index_tts_executor_builds_isolated_request_and_audio_manifest(
             returncode = 0
 
         async def fake_subprocess(*args, **kwargs):
+            assert str(runtime_site_packages) in kwargs["env"]["PYTHONPATH"]
             request_index = args.index("--request") + 1
             request = json.loads(open(args[request_index], encoding="utf-8").read())
             with open(request["output"], "wb") as stream:

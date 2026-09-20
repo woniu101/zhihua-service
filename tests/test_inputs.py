@@ -62,3 +62,62 @@ def test_upload_rejects_spoofed_or_oversized_input(tmp_path) -> None:
 
     assert spoofed.status_code == 415
     assert oversized.status_code == 413
+
+
+def test_upload_accepts_and_deletes_valid_voice_reference(tmp_path) -> None:
+    input_root = tmp_path / "input" / "zhihua-inputs"
+    wav = b"RIFF" + (40).to_bytes(4, "little") + b"WAVEfmt " + b"\x00" * 32
+    with TestClient(app) as client:
+        client.app.state.settings = replace(
+            settings,
+            service_token=TOKEN,
+            comfyui_input_path=str(input_root),
+            maximum_input_bytes=1024,
+        )
+        response = client.post(
+            "/api/v1/inputs?filename=voice-reference.wav",
+            headers=HEADERS,
+            content=wav,
+        )
+
+        assert response.status_code == 201
+        payload = response.json()
+        assert payload["media_type"] in {"audio/wav", "audio/x-wav"}
+        stored = input_root / payload["input_id"]
+        assert stored.read_bytes() == wav
+        deleted = client.delete(
+            f"/api/v1/inputs/{payload['input_id']}",
+            headers=HEADERS,
+        )
+        assert deleted.status_code == 204
+        assert not stored.exists()
+
+
+def test_upload_key_reuses_identical_input_and_rejects_changed_content(tmp_path) -> None:
+    input_root = tmp_path / "input" / "zhihua-inputs"
+    first_bytes = b"\x89PNG\r\n\x1a\n" + b"stable-content"
+    changed_bytes = b"\x89PNG\r\n\x1a\n" + b"changed-content"
+    params = {"filename": "reference.png", "upload_key": "request-1:firstFrame:version-1"}
+    with TestClient(app) as client:
+        client.app.state.settings = replace(
+            settings,
+            service_token=TOKEN,
+            comfyui_input_path=str(input_root),
+            maximum_input_bytes=1024,
+        )
+        created = client.post("/api/v1/inputs", params=params, headers=HEADERS, content=first_bytes)
+        repeated = client.post(
+            "/api/v1/inputs", params=params, headers=HEADERS, content=first_bytes
+        )
+        conflict = client.post(
+            "/api/v1/inputs", params=params, headers=HEADERS, content=changed_bytes
+        )
+
+    assert created.status_code == 201
+    assert repeated.status_code == 201
+    assert created.json()["input_id"] == repeated.json()["input_id"]
+    assert created.json()["reused"] is False
+    assert repeated.json()["reused"] is True
+    assert conflict.status_code == 409
+    assert conflict.json()["detail"]["code"] == "upload_idempotency_conflict"
+    assert len(list(input_root.glob("*.png"))) == 1
